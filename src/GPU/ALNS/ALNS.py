@@ -13,6 +13,7 @@ import random
 from typing import Optional, Any
 # Solution file
 from Solution import Solution
+from utils.utils import select_device
 # Seed passed into ALNS algorithm, used for reproducibility
 SEED = 9101
 
@@ -105,7 +106,9 @@ class ALNS:
         self.B_k = UNINITIALIZED_FLAG if B_k is None else B_k
         self.stopping_criteria = MaxRuntime(250)  # Initial value: stopping criteria is 250 seconds
         self.acceptance_criteria = HillClimbing()  # Default value: hill climbing
-        self.torch_device = torch.device('cpu')  # Either cpu or gpu
+        # Default device is resolved automatically (cuda -> mps -> cpu) unless a
+        # caller sets one explicitly via set_torch_device.
+        self.torch_device = select_device()
 
 
 
@@ -191,8 +194,8 @@ class ALNS:
 
         # Make a solution class, populate it with the result and return it
         quantized_weights = best_state.get_quantized_weights()
-        if not torch.isin(quantized_weights[~best_state.fixed_mask],
-                          best_state.quantization_levels).all():
+        if not torch.isin(quantized_weights[~best_state.fixed_mask].cpu(),
+                          best_state.quantization_levels.cpu()).all():
             raise RuntimeError("Solver returned a mutable value outside the discrete domain")
         # inf_norm_value = utils.calculate_inf_norm_B_k(best_state.B_k, quantized_weights, best_state.inputs)[0]  # Correct
         inf_norm_value = best_state.objective()

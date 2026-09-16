@@ -6,6 +6,25 @@ import numpy as np
 import torch
 
 
+def select_device(requested=None, index=0):
+    """Resolve the compute device with a CUDA -> MPS -> CPU fallback.
+
+    When ``requested`` is provided (a ``torch.device`` or a string such as
+    ``"cpu"`` / ``"cuda:1"`` / ``"mps"``) it is honoured verbatim, so an
+    explicit choice always wins. Otherwise the best available backend is
+    chosen automatically: NVIDIA CUDA (``cuda:index``) first, then Apple
+    Silicon Metal Performance Shaders (``mps``), then CPU.
+    """
+    if requested is not None:
+        return torch.device(requested)
+    if torch.cuda.is_available():
+        return torch.device(f"cuda:{index}")
+    mps = getattr(torch.backends, "mps", None)
+    if mps is not None and mps.is_available():
+        return torch.device("mps")
+    return torch.device("cpu")
+
+
 
 
 

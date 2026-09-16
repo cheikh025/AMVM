@@ -76,6 +76,16 @@ pip install -r requirements-test.txt
 The commands above install CPU PyTorch for tests. Production GPU runs need a
 PyTorch build compatible with the installed CUDA runtime.
 
+### Compute device
+
+When a device is not passed explicitly to the solver, it is resolved
+automatically in the order **CUDA → MPS → CPU**: NVIDIA GPU if available, then
+Apple Silicon Metal (`mps`), then CPU. Pass a device to `set_torch_device` (or
+build inputs on a chosen device) to override the automatic choice. On Apple
+Silicon the solver runs entirely on `mps`; the only unsupported operation is
+`float64` (used by the FIR path and one test), which stays on / falls back to
+CPU.
+
 ## Running/Usage
 
 - The script to quantize a model is at ```src/GPU/quantize_model.py```.

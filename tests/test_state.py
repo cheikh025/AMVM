@@ -99,7 +99,9 @@ def test_l2_constraint_is_explicit(make_state):
     assert not constrained.accepts(linf, l2)
 
 
-def test_incremental_update_preserves_float64_accuracy(make_state):
+def test_incremental_update_preserves_float64_accuracy(make_state, device):
+    if device.type == "mps":
+        pytest.skip("MPS does not support float64")
     state = make_state([[1 / 3, 0]], [0, 0], [0], dtype=torch.float64)
     state.weights[0] = 1
     state.changes.append((0, 1))

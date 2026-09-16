@@ -7,6 +7,7 @@ import astra
 import torch
 from skimage.metrics import structural_similarity as ssim
 from ALNS.ALNS import ALNS
+from utils.utils import select_device
 from RoundToNearest import FindNearest
 from alns.stop import *
 from DART import *
@@ -79,7 +80,7 @@ def run_ALNS(A, p, rec_sart, nQuantized, device):
 def process_folder(image_folder, n_angles=8, n_d=512, iters=1000, noise_factor= None):
     results = []
     image_paths = glob.glob(os.path.join(image_folder, '*.png'))
-    device = 'cuda'
+    device = select_device()  # cuda -> mps -> cpu
     nQuantized = NQ
     num_levels = 2 ** nQuantized
     wMin = 0

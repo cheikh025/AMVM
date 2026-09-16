@@ -162,10 +162,7 @@ def quantize_indices_concurrently(indices: list[int] | np.ndarray, INPUTS_ARRAY:
 
         for iteration in range(iteration_begin, iteration_end):
             GPU_IDX = iteration % config.num_gpu
-            if torch.cuda.is_available():
-                torch_device = torch.device(f'cuda:{GPU_IDX}')
-            else:
-                torch_device = torch.device('cpu')
+            torch_device = ut.select_device(index=GPU_IDX)  # cuda -> mps -> cpu
 
 
             row_idx = indices[iteration]
@@ -219,10 +216,7 @@ def quantize_matrix(config: Config) -> np.ndarray:
     INPUTS_ARRAY = []
 
     for i in range(config.num_gpu):
-        if torch.cuda.is_available():
-            torch_device = torch.device(f'cuda:{i}')
-        else:
-            torch_device = torch.device('cpu')
+        torch_device = ut.select_device(index=i)  # cuda -> mps -> cpu
         wt = torch.from_numpy(config.weights).float().detach().to(torch_device)
         inputs_arr = torch.from_numpy(config.inputs).detach().float().to(torch_device)
         WEIGHTS_ARRAY.append(wt)

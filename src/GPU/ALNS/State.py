@@ -77,6 +77,12 @@ class State:
         If use_squeezellm is on, then squeezellm_LUT has to be sorted, and weights should be tensor of integers
         """
         self.torch_device = torch_device
+        # Keep every input on the working device. The device may be auto-selected
+        # (cuda -> mps -> cpu), so callers are not required to pre-move tensors.
+        inputs = inputs.to(torch_device)
+        weights = weights.to(torch_device)
+        original_weights = original_weights.to(torch_device)
+        B_k = B_k.to(torch_device)
         # Variables for debugging
         self.iteration = 0
         self.cnt = 0
@@ -153,7 +159,7 @@ class State:
             a = -2.0 ** (nQuantization-1)
             b = 2.0 ** (nQuantization-1) - 1
             self.step = ((b - a) / (self.num_levels - 1)/(2.0 ** (nQuantization-1)))
-            k_values = torch.arange(a, b + 1,  dtype=torch.float64, device=torch_device)  
+            k_values = torch.arange(a, b + 1, dtype=torch.float64)  # CPU: MPS lacks float64
             self.quantization_levels = k_values / (2.0 ** (nQuantization-1))
         if use_gptq:
             zero = torch.round(-self.wMin / self.step)
@@ -178,7 +184,7 @@ class State:
                 raise ValueError("Explicit domains cannot be combined with legacy domain modes")
             self.quantization_levels = torch.as_tensor(discrete_domain, device=torch_device,
                                                        dtype=inputs.dtype).clone()
-        self.quantization_levels = self.quantization_levels.to(dtype=inputs.dtype)
+        self.quantization_levels = self.quantization_levels.to(device=torch_device, dtype=inputs.dtype)
         if (self.quantization_levels.ndim != 1 or self.quantization_levels.numel() == 0
                 or not torch.isfinite(self.quantization_levels).all()
                 or (self.quantization_levels[1:] < self.quantization_levels[:-1]).any()):
