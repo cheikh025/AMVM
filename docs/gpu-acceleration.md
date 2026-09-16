@@ -91,12 +91,27 @@ can still tie survive and remain able to win on the sum of squares.
 | candidate chunk 512, pruning | 170 | **1328** |
 | candidate chunk 32768, pruning | 151 | 2216 |
 
-Pruning wins 1.22x on the wide layer and loses 1.16x on the narrow one. The
-saving grows with the number of candidates per level pair and with the sample
-count, while the cost is a fixed synchronization per stage, so wide layers pay it
-off and narrow ones do not. Wide layers also dominate total matrix time, so
-enabling it per layer is worth measuring on the target device. It is off by
-default and enabled with `AMVM_PRUNE_TO_INCUMBENT=1`.
+At a fixed 20 iterations, pruning wins 1.22x on the wide layer and loses 1.16x on
+the narrow one. At a fixed time budget it reaches more iterations on every layer:
+
+| Layer | Iterations in 10 s, without | With | Rows worse at equal time |
+|---|---:|---:|---:|
+| q_proj | 100 | 126 | 0 of 12 |
+| fc1 | 174 | 214 | 0 of 12 |
+| fc2 | 3 | 6 | 0 of 12 |
+
+The two measures disagree because iteration cost is not stationary: early
+iterations do far more local-search work than late ones, so a fixed-iteration
+measure over-weights the expensive early ones, where pruning's per-stage cost
+falls hardest. Confirmed directly: over 100 iterations rather than 20, the two
+configurations are within 3% of each other on q_proj and reach identical
+objectives. The time budget is what production uses, so that is the measure that
+should decide.
+
+It is still off by default, because the margin on narrow layers is inside the
+noise of this device and the balance is expected to move at the production sample
+count, where the saving grows and the per-stage cost does not. Enable it with
+`AMVM_PRUNE_TO_INCUMBENT=1` and measure per layer on the target device.
 
 Raising the candidate chunk is a regression in every combination and is not used.
 
@@ -130,6 +145,57 @@ acceptance per row. Tomography and the FIR design keep using the package.
 Enable with `AMVM_BATCHED_ROWS=1`; `AMVM_BATCH_SIZE` sets how many rows share one
 program. GPTQ starting weights are refused by this path rather than silently
 mishandled, because the GPTQ zero-point domain is not implemented here.
+
+It reaches parity and is not enabled. At equal total time, where the per-row path
+gets the production budget per row and the batched path gets the sum for the
+group:
+
+| Instance | Rows | Per-row path | Batched path | Rows better |
+|---|---:|---|---|---:|
+| q_proj | 16 | 161.3 s, 0.654913 | 165.1 s, 0.659705 | 5 of 16 |
+| q_proj | 64 | 646.5 s, 0.643139 | 640.1 s, 0.654430 | 28 of 64 |
+| fc2 | 16 | 189.5 s, 0.043478 | 160.2 s, 0.043536 | 7 of 16 |
+
+The premise of batching is that one row does not fill the device. After the Tier
+A changes that premise no longer holds here: the per-row program already keeps
+this device busy, and what batching adds is the Python and launch cost Tier A had
+already removed. Batch size moves the result the right way without crossing over,
+from 31% of rows won at 16 rows to 44% at 64.
+
+Two defects in this path were found by benchmarking rather than by tests, and
+both are now covered. Level values were read positionally instead of by row
+index, which is invisible while all rows share one domain and all rows improve.
+A row with no admissible candidate was treated as a row whose candidates all tie,
+because its best key and their keys were both infinite, so it was handed a move
+it should not have taken.
+
+A separate finding from these runs: the per-row path overran its time budget by
+18% on `fc2`, because the stopping rule is only checked between iterations and an
+`fc2` iteration is long. At the production sample count an `fc2` iteration would
+be far longer than the whole per-row budget, so the budget would stop meaning
+much. Worth deciding deliberately rather than discovering in a run.
+
+## What to merge
+
+| Change | Recommendation | Evidence |
+|---|---|---|
+| A2 host-side index gathering | merge, on by default | exact; 1.29x, 1.38x, 1.13x |
+| A1 settled-pass skip | merge, on by default | 0 of 36 paired rows worse at equal time |
+| A3 device-resident swap | merge, on by default | identical selection; synchronizations 421 to 155 |
+| A4 budget-derived row tile | merge, on by default | identical objective; operations 46,900 to 5,200 |
+| A6 incumbent pruning | merge behind a flag, off | best at equal time on all three layers, but inside noise on narrow ones |
+| A7 Gram-matrix L2 | do not implement yet | the term it removes is 10% of the stage it runs in |
+| A5 transposed activations | do not implement yet | gathers are not the bottleneck here, and a second copy is 3.2 GB |
+| Tier B batched rows | merge behind a flag, off | parity at equal time on this device |
+
+The four defaults together are 2.0x, 2.0x and 1.8x per iteration, and at equal
+time they reach a lower infinity norm on every layer with no paired row worse
+than the baseline in any of 36 comparisons.
+
+The flags are the mechanism for keeping this decidable later: every variant lives
+on one commit, `experiments/variants.sh` names the cumulative stack, and
+`experiments/run_protocol.sh` runs the same commands for each, so re-deciding on
+CUDA means rerunning the protocol rather than rebuilding the comparison.
 
 ## Open checks that need CUDA
 

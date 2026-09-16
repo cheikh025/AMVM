@@ -258,10 +258,18 @@ def swap_pass(batch, active, screen_rows, candidate_tile=4096):
     return improved
 
 
-def local_search(batch, active, n_filters=100, candidate_tile=4096, max_passes=1000):
-    """Run batched swap passes until no active row improves."""
+def local_search(batch, active, n_filters=100, candidate_tile=4096, max_passes=1000,
+                 deadline=None):
+    """Run batched swap passes until no active row improves.
+
+    A pass is the smallest unit that leaves the batch consistent, so the deadline
+    is checked between passes. Without it a single descent can run far past the
+    budget, which makes an equal-time comparison meaningless.
+    """
     working = active.clone()
     for _ in range(max_passes):
+        if deadline is not None and time.time() >= deadline:
+            break
         screen_rows = batch.residual.abs().T.topk(min(n_filters,
                                                       batch.residual.shape[0]), dim=1).indices
         improved = swap_pass(batch, working, screen_rows, candidate_tile)
@@ -301,18 +309,18 @@ def solve(inputs, weights, levels, B_k, seconds, acceptance_policy="linf_l2_noni
     """
     batch = BatchedRows(inputs, weights, levels, B_k, acceptance_policy, fixed_mask, seed)
     active = torch.ones(batch.n_rows, dtype=torch.bool, device=batch.device)
-    local_search(batch, active, n_filters, candidate_tile)
+    deadline = time.time() + seconds
+    local_search(batch, active, n_filters, candidate_tile, deadline=deadline)
     improved = batch.objective < batch.best_objective
     batch.best_weights[improved] = batch.weights[improved]
     batch.best_objective = torch.minimum(batch.objective, batch.best_objective)
 
-    deadline = time.time() + seconds
     iteration = 0
     while time.time() < deadline:
         iteration += 1
         batch.weights = batch.best_weights.clone()
         destroy_and_repair(batch, active, destroy_rate)
-        local_search(batch, active, n_filters, candidate_tile)
+        local_search(batch, active, n_filters, candidate_tile, deadline=deadline)
 
         improved = batch.objective < batch.best_objective
         batch.best_weights[improved] = batch.weights[improved]
