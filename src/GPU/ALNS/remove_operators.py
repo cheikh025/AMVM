@@ -1,6 +1,7 @@
 """Remove operators and their helper functions"""
 
 import copy
+import random
 from .State import *
 import math
 
@@ -13,6 +14,11 @@ def create_copied_state(state: State, removed_array: torch.tensor):
     newState = copy.copy(state)  # Make a copy of the state to modify it
     newState.removed_array = removed_array  # Store the indicated elements to remove here
     newState.weights = new_weights_array
+    newState.changes = list(state.changes)
+    newState.python_rng = random.Random()
+    newState.python_rng.setstate(state.python_rng.getstate())
+    newState.torch_generator = torch.Generator(device=state.torch_device)
+    newState.torch_generator.set_state(state.torch_generator.get_state())
     newState.eval_flag = FULL
 
     # Make copies of L_set and full eval
@@ -37,8 +43,9 @@ def random_remove(state: State, rnd_state: np.random.RandomState) -> State:
     operator_debug(state, random_remove)
 
     M = len(state.weights)  # Get the size of the row (first dimension)
-    num_to_remove = int(DESTROY_RATE * M)  # Number of elements to remove
-    to_remove = rnd_state.choice(a=M, size=num_to_remove)
+    mutable = torch.nonzero(~state.fixed_mask, as_tuple=True)[0].cpu().numpy()
+    num_to_remove = min(len(mutable), max(1, math.ceil(DESTROY_RATE * len(mutable))))
+    to_remove = rnd_state.choice(mutable, size=num_to_remove, replace=False)
 
     removed_array = torch.zeros(len(state.weights), dtype=torch.bool, device=state.torch_device)  # Make a copy of the removed array
     removed_array[to_remove] = True  # Set selected removed elements to 1
@@ -115,15 +122,21 @@ def worst_remove(state: State, rnd_state: np.random.RandomState) -> State:
         return state  # Prevent divide by 0 errors
 
     score_tensor = individual_scores.matmul(D_ks.abs()).div(sum_abs_D_k).flatten()
+    score_tensor[state.fixed_mask] = 0
+    if score_tensor.sum() == 0:
+        return state
     score_tensor = score_tensor.div(score_tensor.sum())  # Normalize
 
     # Destroy destroy_rate percent of the array
     #amount_to_destroy = int(len(state.weights) * DESTROY_RATE)
-    amount_to_destroy = math.ceil(len(state.weights) * DESTROY_RATE)
-    removed_idx_tensor = torch.multinomial(score_tensor, amount_to_destroy, replacement=False)
+    amount_to_destroy = min(int((~state.fixed_mask).sum()),
+                            max(1, math.ceil(int((~state.fixed_mask).sum()) * DESTROY_RATE)))
+    removed_idx_tensor = torch.multinomial(score_tensor, amount_to_destroy, replacement=False,
+                                           generator=state.torch_generator)
     removed_indices = removed_idx_tensor.cpu().numpy()
 
     removed_array[removed_indices] = True
+    removed_array[state.fixed_mask.cpu().numpy()] = False
 
     # Debugging output
     #if state.debug:
@@ -133,5 +146,3 @@ def worst_remove(state: State, rnd_state: np.random.RandomState) -> State:
     # Make a new state so we can modify it since it's mutable
    
     return create_copied_state(state, removed_array)
-
-

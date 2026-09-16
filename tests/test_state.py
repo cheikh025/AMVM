@@ -48,9 +48,6 @@ def test_uniform_move_evaluation_does_not_mutate_state(make_state):
     torch.testing.assert_close(state.signedD_ks, before_residual)
 
 
-@pytest.mark.known_bug
-@pytest.mark.xfail(reason="B02: single-change scoring uses a uniform step for nonuniform levels",
-                   raises=AssertionError)
 def test_nonuniform_move_evaluation_uses_actual_level_difference(make_state):
     state = make_state([[1, 0]], [1, 0], [1], original=[0, 11],
                        levels=[0, 1, 10, 11], bits=2)
@@ -61,14 +58,17 @@ def test_nonuniform_move_evaluation_uses_actual_level_difference(make_state):
     assert state.objective() == pytest.approx(expected)
 
 
-@pytest.mark.known_bug
-@pytest.mark.xfail(reason="B05: candidate and incumbent share the mutable changes queue",
-                   raises=AssertionError)
 def test_candidate_change_queue_is_independent(make_state):
     state = make_state([[1, 2]], [0, 1], [0])
     candidate = create_copied_state(state, torch.ones_like(state.weights, dtype=torch.bool))
     candidate.changes.append((0, 1))
+    python_rng_state = state.python_rng.getstate()
+    torch_rng_state = state.torch_generator.get_state().clone()
+    candidate.python_rng.random()
+    torch.rand(1, generator=candidate.torch_generator, device=state.torch_device)
     assert state.changes == []
+    assert state.python_rng.getstate() == python_rng_state
+    torch.testing.assert_close(state.torch_generator.get_state(), torch_rng_state)
 
 
 def test_candidate_weight_and_residual_tensors_are_independent(make_state):
@@ -80,9 +80,25 @@ def test_candidate_weight_and_residual_tensors_are_independent(make_state):
     assert state.signedD_ks.item() == 2
 
 
-@pytest.mark.known_bug
-@pytest.mark.xfail(reason="B10: incremental residual buffer forces float32 for float64 input",
-                   raises=AssertionError)
+def test_fixed_variables_cannot_be_changed(make_state):
+    state = make_state([[1, 0]], [0, 0], [2], original=[1, 0],
+                       keep_outliers=True, outlier_range=0.5)
+    with pytest.raises(ValueError, match="fixed variable"):
+        state.apply_move([0], [1])
+    assert state.weights.tolist() == [0, 0]
+
+
+def test_l2_constraint_is_explicit(make_state):
+    pure = make_state([[-0.5, 0], [1.5, 0]], [0, 0], [-2, 0],
+                      acceptance_policy="linf")
+    constrained = make_state([[-0.5, 0], [1.5, 0]], [0, 0], [-2, 0],
+                             acceptance_policy="linf_l2_nonincrease")
+    residual = pure.move_residual([0], [1])
+    linf, l2 = residual.abs().max().item(), residual.square().sum()
+    assert pure.accepts(linf, l2)
+    assert not constrained.accepts(linf, l2)
+
+
 def test_incremental_update_preserves_float64_accuracy(make_state):
     state = make_state([[1 / 3, 0]], [0, 0], [0], dtype=torch.float64)
     state.weights[0] = 1

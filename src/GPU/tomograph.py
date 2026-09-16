@@ -63,14 +63,16 @@ def run_ALNS(A, p, rec_sart, nQuantized, device):
     nearWq, nearQ = FindNearest(x0, nQuantized, device)
     W = torch.from_numpy(A).float().to(device)
     y = torch.from_numpy(p).float().to(device)
-    alns_obj = ALNS(nearQ, x0, W, nQuantized, debug=False, use_gptq=False)
+    domain = torch.linspace(0, MAX_RANGE, 2 ** nQuantized, device=device)
+    alns_obj = ALNS(nearQ, x0, W, nQuantized, discrete_domain=domain, B_k=y)
     alns_obj.set_stopping_criteria(stopping_criteria=MaxIterations(ALNS_ITERS))
     alns_obj.set_LS_operator('S')
-    alns_obj.set_B_k(y)
     alns_obj.set_torch_device(device)
     alns_start = time.perf_counter()
     solution = alns_obj.solve()
     alns_time = time.perf_counter() - alns_start
+    if not torch.isin(solution.quantized_weights, domain).all():
+        raise ValueError("Tomography solution lies outside the prescribed grey levels")
     alns_rec = solution.quantized_weights.detach().cpu().numpy().flatten()
     return alns_rec, alns_time
 
