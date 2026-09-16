@@ -235,3 +235,24 @@ def test_swap_pass_with_a_weak_screen_still_never_worsens_a_row(device):
 
     assert not bool(improved.any())
     assert torch.all(batch.objective <= settled + 1e-5)
+
+
+def test_batched_path_is_reached_through_the_same_dispatcher(monkeypatch):
+    """Both row paths go through one entry point, so retries and fallbacks are shared."""
+    import full_layer
+    from ALNS import tuning
+
+    seen = {}
+    monkeypatch.setattr(tuning, "BATCHED_ROWS", True)
+    monkeypatch.setattr(full_layer, "quantize_indices_batched",
+                        lambda indices, inputs, weights, config: seen.setdefault("batched", list(indices)))
+    monkeypatch.setattr(full_layer, "quantize_indices_with_workers",
+                        lambda *args: seen.setdefault("workers", True))
+
+    full_layer.quantize_indices_concurrently([0, 1], [object()], [object()], object())
+    assert seen == {"batched": [0, 1]}
+
+    seen.clear()
+    monkeypatch.setattr(tuning, "BATCHED_ROWS", False)
+    full_layer.quantize_indices_concurrently([0, 1], [object()], [object()], object())
+    assert seen == {"workers": True}

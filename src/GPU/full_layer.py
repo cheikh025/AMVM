@@ -212,7 +212,20 @@ def quantize_indices_batched(indices, inputs: torch.Tensor, weights: torch.Tenso
 
 
 def quantize_indices_concurrently(indices: list[int] | np.ndarray, INPUTS_ARRAY: list[torch.Tensor], WEIGHTS_ARRAY: list[torch.Tensor], config: Config):
-    """Takes in iterable indices and runs quantization algorithm on each row index specified"""
+    """Quantize the given row indices, by whichever path is configured.
+
+    This is the single entry point for quantizing a set of rows, so the retry and
+    fallback machinery around it does not have to know which path ran.
+    """
+    from ALNS import tuning as alns_tuning
+    if alns_tuning.BATCHED_ROWS:
+        print(f"Batched row solver enabled (batch size {alns_tuning.BATCH_SIZE})")
+        return quantize_indices_batched(indices, INPUTS_ARRAY[0], WEIGHTS_ARRAY[0], config)
+    return quantize_indices_with_workers(indices, INPUTS_ARRAY, WEIGHTS_ARRAY, config)
+
+
+def quantize_indices_with_workers(indices: list[int] | np.ndarray, INPUTS_ARRAY: list[torch.Tensor], WEIGHTS_ARRAY: list[torch.Tensor], config: Config):
+    """Run one worker per row, fanned out over the available devices."""
     TOTAL_ITERATIONS = len(indices)
     # EXPLICITLY CREATING PROCESSES ------------------------------------------
     LOOP_ITERATIONS = math.ceil(TOTAL_ITERATIONS / config.rows_per_gpu / config.num_gpu)
@@ -301,12 +314,7 @@ def quantize_matrix(config: Config) -> np.ndarray:
     unquantized_indices = np.arange(config.index_iterations)
 
     print(f"Using {config.rows_per_gpu} rows per gpu")
-    from ALNS import tuning as alns_tuning
-    if alns_tuning.BATCHED_ROWS:
-        print(f"Batched row solver enabled (batch size {alns_tuning.BATCH_SIZE})")
-        quantize_indices_batched(unquantized_indices, INPUTS_ARRAY[0], WEIGHTS_ARRAY[0], config)
-    else:
-        quantize_indices_concurrently(unquantized_indices, INPUTS_ARRAY, WEIGHTS_ARRAY, config)
+    quantize_indices_concurrently(unquantized_indices, INPUTS_ARRAY, WEIGHTS_ARRAY, config)
 
     # Read in every row from the temporary file, store in numpy array then save numpy array
     quantized_matrix = np.zeros(config.weights.shape)  # initialize matrix with same size
@@ -343,12 +351,8 @@ def quantize_matrix(config: Config) -> np.ndarray:
     print(f"using {config.rows_per_gpu} rows per gpu")
     if incomplete_row_indices != []:
         print(f"Incomplete row indices is not empty, it has size {len(incomplete_row_indices)}")
-        if alns_tuning.BATCHED_ROWS:
-            quantize_indices_batched(incomplete_row_indices, INPUTS_ARRAY[0], WEIGHTS_ARRAY[0],
-                                     config)
-        else:
-            quantize_indices_concurrently(incomplete_row_indices, INPUTS_ARRAY, WEIGHTS_ARRAY,
-                                          config)
+        quantize_indices_concurrently(incomplete_row_indices, INPUTS_ARRAY, WEIGHTS_ARRAY,
+                                      config)
     # TODO: put this in function instead of reusing code
     for incomplete_row_index in incomplete_row_indices:
         print(f"Retrying incomplete row index {incomplete_row_index}")
