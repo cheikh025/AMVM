@@ -34,3 +34,7 @@ ml-1m/
 
 # Benchmark instances captured by experiments/capture_real_instances.py
 experiments/data/
+
+# Benchmark results are the evidence for the ledger in experiments/algo_memory.md,
+# so they are tracked despite the blanket *.json rule above.
+!experiments/results/**/*.json

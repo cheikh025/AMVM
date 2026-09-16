@@ -86,12 +86,12 @@ can still tie survive and remain able to win on the sum of squares.
 
 | Configuration | q_proj | fc2 |
 |---|---:|---:|
-| candidate chunk 512, no pruning | 146 | 1616 |
-| candidate chunk 32768, no pruning | 158 | 1893 |
-| candidate chunk 512, pruning | 170 | **1328** |
-| candidate chunk 32768, pruning | 151 | 2216 |
+| candidate chunk 512, no pruning | 150 | 1619 |
+| candidate chunk 32768, no pruning | 163 | 1941 |
+| candidate chunk 512, pruning | 189 | **1350** |
+| candidate chunk 32768, pruning | 151 | 2238 |
 
-At a fixed 20 iterations, pruning wins 1.22x on the wide layer and loses 1.16x on
+At a fixed 20 iterations, pruning wins 1.20x on the wide layer and loses 1.26x on
 the narrow one. At a fixed time budget it reaches more iterations on every layer:
 
 | Layer | Iterations in 10 s, without | With | Rows worse at equal time |
@@ -103,9 +103,9 @@ the narrow one. At a fixed time budget it reaches more iterations on every layer
 The two measures disagree because iteration cost is not stationary: early
 iterations do far more local-search work than late ones, so a fixed-iteration
 measure over-weights the expensive early ones, where pruning's per-stage cost
-falls hardest. Confirmed directly: over 100 iterations rather than 20, the two
-configurations are within 3% of each other on q_proj and reach identical
-objectives. The time budget is what production uses, so that is the measure that
+falls hardest. Confirmed directly on q_proj: over 20 iterations pruning is 21%
+slower per iteration, over 100 iterations 5% slower, and both reach identical
+objectives at both lengths. The time budget is what production uses, so that is the measure that
 should decide.
 
 It is still off by default, because the margin on narrow layers is inside the
@@ -145,6 +145,20 @@ acceptance per row. Tomography and the FIR design keep using the package.
 Enable with `AMVM_BATCHED_ROWS=1`; `AMVM_BATCH_SIZE` sets how many rows share one
 program. GPTQ starting weights are refused by this path rather than silently
 mishandled, because the GPTQ zero-point domain is not implemented here.
+
+**Read the budget before enabling this on CUDA.** A group is given
+`seconds * group size`, which is what its rows would have consumed one after
+another. That matches a single-device sequential run. It does not match the
+production setup, where forty rows run at once for `seconds` each, so a 64-row
+group would occupy roughly forty times the wall clock of the current fan-out.
+Enabling the flag there without changing the budget is a large slowdown, not a
+speedup.
+
+The batched path also prunes against the acceptance bound, which is the strategy
+measured at 0.15% of work removed, and it pays a compaction synchronization per
+stage to do it. Its parity result is therefore slightly pessimistic; pruning
+against each row's incumbent, as the single-row path does, would remove that dead
+cost. This does not change the off-by-default decision.
 
 It reaches parity and is not enabled. At equal total time, where the per-row path
 gets the production budget per row and the batched path gets the sum for the

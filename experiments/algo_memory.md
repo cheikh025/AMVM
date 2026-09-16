@@ -141,6 +141,15 @@ production actually runs, not against one sequential loop.
 
 - An idea premised on an idle device has to be re-argued once the device is no
   longer idle. Tier A removed the very overhead that made Tier B attractive.
+- The batched path still prunes against the acceptance bound, the strategy
+  entry 7 measured at 0.15% of work removed, and pays a compaction
+  synchronization per stage for it. On `fc2` that is roughly twenty stages of
+  overhead per level pair buying nothing, so the parity result understates the
+  path slightly. Switching it to prune against each row's incumbent, as the
+  single-row path does, is the obvious next change if it is ever revisited.
+- The group budget is `seconds * group size`, which matches a sequential device
+  and not the production fan-out where rows run concurrently. Anyone enabling the
+  flag on CUDA has to revisit the budget first.
 - Two defects survived a first round of tests that looked thorough and were
   caught only by benchmarking. Reading level values positionally rather than by
   row index is invisible while every row shares one domain and every row
@@ -172,12 +181,13 @@ pruning starts earlier.
 
 | Configuration | q_proj | fc2 |
 |---|---:|---:|
-| chunk 512, no pruning | 146 | 1616 |
-| chunk 32768, no pruning | 158 | 1893 |
-| chunk 512, pruning | 170 | 1328 |
-| chunk 32768, pruning | 151 | 2216 |
+| chunk 512, no pruning | 150 | 1619 |
+| chunk 32768, no pruning | 163 | 1941 |
+| chunk 512, pruning | 189 | 1350 |
+| chunk 32768, pruning | 151 | 2238 |
 
-Median milliseconds per iteration.
+Median milliseconds per iteration, from
+`experiments/results/chunk-{512,32768}-{no,}pruning/`.
 
 ### Analysis
 
@@ -231,6 +241,14 @@ found so far, not the acceptance bound, which became experiment 6.
 - Measure the assumption behind a pruning rule before implementing the rule. The
   measurement cost twenty minutes; the implementation cost two hours.
 
+### Artefacts
+
+- Diagnostics: `experiments/diagnose_kill_order.py` (which sample ordering rejects
+  survivors fastest, answer: none of them) and
+  `experiments/diagnose_prune_potential.py` (work remaining when pruning against
+  the true best). Both print to standard output rather than writing a result
+  file.
+
 ---
 
 ## Experiment 6: Pruning against the incumbent best
@@ -253,8 +271,8 @@ size instead of collapsing into many small launches.
 | Metric | q_proj | fc2 |
 |---|---:|---:|
 | Oracle work remaining, pruning against the true best | 44% | 8.5% |
-| Milliseconds per iteration, 20 iterations, without | 146 | 1616 |
-| Milliseconds per iteration, 20 iterations, with | 170 | 1328 |
+| Milliseconds per iteration, 20 iterations, without | 150 | 1619 |
+| Milliseconds per iteration, 20 iterations, with | 189 | 1350 |
 | Iterations reached in a 10 second budget, without | 100 | 3 |
 | Iterations reached in a 10 second budget, with | 126 | 6 |
 | Paired rows worse at equal time | 0 of 12 | 0 of 12 |
@@ -282,7 +300,10 @@ not.
 
 ### Artefacts
 
-- Raw results: `experiments/results/a6-prune-incumbent/`
+- Raw results: `experiments/results/a6-prune-incumbent/`, the chunk isolation in
+  `experiments/results/chunk-*/`, and the iteration-cost drift in
+  `experiments/results/drift/`, where the 20-iteration and 100-iteration runs
+  reach identical objectives, confirming that pruning changes only the cost.
 
 ---
 
