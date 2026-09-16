@@ -1,10 +1,11 @@
 """Feature flags and device-aware tile sizes for the ALNS solver.
 
-Every flag defaults to the behaviour of the merged baseline, so an unmodified run
-reproduces the solver as it was measured. Benchmarks flip a flag through its
-environment variable and run in a separate process, which lets competing
-implementations coexist on one commit and keeps every A/B reproducible from a
-single checkout.
+Defaults are the configuration the measurements in ``docs/gpu-acceleration.md``
+recommend: the changes that were exact or that no paired row lost to are on, and
+the ones whose margin is inside this device's noise are off. Set a flag to 0 to
+get the earlier behaviour back. Benchmarks flip flags through the environment and
+run in a separate process, which lets competing implementations coexist on one
+commit and keeps every A/B reproducible from a single checkout.
 
 Flags are read once at import time. Set them before the solver is imported.
 """
@@ -38,11 +39,11 @@ def _int(name: str, default: int) -> int:
 # previous pass on that exact state ended without an improving move and nothing
 # has changed since. Statistically equivalent, not trajectory identical, because
 # the skipped pass would have drawn from the Python RNG.
-SKIP_SETTLED_LOCAL_SEARCH = _flag("AMVM_SKIP_SETTLED_LOCAL_SEARCH", False)
+SKIP_SETTLED_LOCAL_SEARCH = _flag("AMVM_SKIP_SETTLED_LOCAL_SEARCH", True)
 
 # A3/A6: keep the swap pass resident on the device (one synchronization per pass)
 # and drop candidates whose running maximum already exceeds the policy bound.
-DEVICE_RESIDENT_SWAP = _flag("AMVM_DEVICE_RESIDENT_SWAP", False)
+DEVICE_RESIDENT_SWAP = _flag("AMVM_DEVICE_RESIDENT_SWAP", True)
 
 # A6: stop evaluating a candidate once its running maximum has passed the best
 # candidate found so far. Selection needs the smallest maximum, so a candidate
@@ -94,7 +95,7 @@ BATCH_CANDIDATE_TILE = _int("AMVM_BATCH_CANDIDATE_TILE", 4096)
 # The fixed 256-row tile was chosen for CPU memory; a budget adapts the tile to
 # the device and to N, which is what decides how many kernel launches a pass
 # costs.
-BUDGET_ROW_TILE = _flag("AMVM_BUDGET_ROW_TILE", False)
+BUDGET_ROW_TILE = _flag("AMVM_BUDGET_ROW_TILE", True)
 
 # Memory budget for the largest intermediate tensor of one swap pass. The row
 # tile is derived from it, so the same setting adapts to N and to the device.

@@ -16,16 +16,20 @@ VARIANT_ORDER="a2-host-indexing a1-skip-settled a3-device-resident a4-budget-til
 
 variant_flags() {
   case "$1" in
+    # Every entry names every flag, so the ladder keeps reproducing the same
+    # configurations now that the recommended ones are the defaults.
+    #
     # A2: gather removed indices and levels in one transfer instead of per element.
     a2-host-indexing)
-      echo "" ;;
+      echo "AMVM_SKIP_SETTLED_LOCAL_SEARCH=0 AMVM_DEVICE_RESIDENT_SWAP=0 AMVM_BUDGET_ROW_TILE=0" ;;
     # A1: skip a local-search pass whose starting point is already settled.
     a1-skip-settled)
-      echo "AMVM_SKIP_SETTLED_LOCAL_SEARCH=1" ;;
+      echo "AMVM_SKIP_SETTLED_LOCAL_SEARCH=1 AMVM_DEVICE_RESIDENT_SWAP=0 AMVM_BUDGET_ROW_TILE=0" ;;
     # A3: keep the swap pass on the device, one synchronization per pass.
     a3-device-resident)
-      echo "AMVM_SKIP_SETTLED_LOCAL_SEARCH=1 AMVM_DEVICE_RESIDENT_SWAP=1" ;;
+      echo "AMVM_SKIP_SETTLED_LOCAL_SEARCH=1 AMVM_DEVICE_RESIDENT_SWAP=1 AMVM_BUDGET_ROW_TILE=0" ;;
     # A4: size the row tile from a memory budget instead of the fixed 256 rows.
+    # This is the default configuration.
     a4-budget-tile)
       echo "AMVM_SKIP_SETTLED_LOCAL_SEARCH=1 AMVM_DEVICE_RESIDENT_SWAP=1 AMVM_BUDGET_ROW_TILE=1" ;;
     # A6: drop candidates that can no longer beat the best one found so far.

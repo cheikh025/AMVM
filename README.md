@@ -176,17 +176,16 @@ If you want to run it from nearest (this only works for uniform quantization gri
 
 ### Solver variants and tuning flags
 
-Optional solver changes live behind environment flags in
-`src/GPU/ALNS/tuning.py`, read once per process. Defaults reproduce the solver as
-it was measured, so an unmodified run behaves exactly as before and a benchmark
-turns one flag on in a fresh process. `docs/gpu-acceleration.md` records what each
-one was measured to do on Apple Silicon and what still needs measuring on CUDA.
+Solver variants live behind environment flags in `src/GPU/ALNS/tuning.py`, read
+once per process. Defaults are what the measurements recommend; set a flag to 0
+for the earlier behaviour. `docs/gpu-acceleration.md` records what each one was
+measured to do on Apple Silicon and what still needs measuring on CUDA.
 
 | Flag | Default | Effect |
 |---|---|---|
-| `AMVM_SKIP_SETTLED_LOCAL_SEARCH` | off | Skip a local-search pass whose starting point an earlier pass already examined without finding a move |
-| `AMVM_DEVICE_RESIDENT_SWAP` | off | Reduce the swap pass to its best candidate on the device, one synchronization per pass |
-| `AMVM_BUDGET_ROW_TILE` | off | Derive the row tile from `AMVM_SWAP_MEMORY_BUDGET_MB` instead of the fixed 256 rows |
+| `AMVM_SKIP_SETTLED_LOCAL_SEARCH` | on | Skip a local-search pass whose starting point an earlier pass already examined without finding a move |
+| `AMVM_DEVICE_RESIDENT_SWAP` | on | Reduce the swap pass to its best candidate on the device, one synchronization per pass |
+| `AMVM_BUDGET_ROW_TILE` | on | Derive the row tile from `AMVM_SWAP_MEMORY_BUDGET_MB` instead of the fixed 256 rows |
 | `AMVM_PRUNE_TO_INCUMBENT` | off | Drop candidates that can no longer beat the best one found so far. Measured a win on wide layers and a loss on narrow ones |
 | `AMVM_BATCHED_ROWS` | off | Solve `AMVM_BATCH_SIZE` rows in one batched tensor program instead of one process per row. Not implemented for GPTQ starting weights |
 
