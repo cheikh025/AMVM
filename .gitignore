@@ -31,3 +31,6 @@ ml-1m/
 *.pdf
 *.npy
 *DS_Store
+
+# Benchmark instances captured by experiments/capture_real_instances.py
+experiments/data/

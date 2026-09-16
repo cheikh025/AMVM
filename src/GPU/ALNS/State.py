@@ -210,6 +210,12 @@ class State:
                                                                                 self.get_quantized_weights(),
                                                                                 self.inputs)
 
+        # A settled state is one a local-search pass has already examined without
+        # finding an improving move. Cleared by every applied move. A fresh state
+        # has never been searched, so it starts unsettled.
+        self.settled = False
+        self.move_count = 0
+
         # If recalculate_flag, then the next objective call will do a recalculation
         self.recalculate_flag = False
         self.eval_flag = FULL  # Get full evaluation next time
@@ -266,6 +272,8 @@ class State:
         residual = self.move_residual(indices, new_indices)
         self.weights[indices] = torch.as_tensor(new_indices, device=self.torch_device,
                                                 dtype=self.weights.dtype)
+        self.move_count += 1
+        self.settled = False  # the point moved, so any earlier verification is stale
         self._set_residual(residual)
         self.eval_flag, self.recalculate_flag = FULL, False
         return self.objective_value
