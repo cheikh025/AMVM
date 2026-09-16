@@ -174,6 +174,52 @@ Getting the c4/wikitext2 datasets may fail, you may need to run it multiple time
 
 If you want to run it from nearest (this only works for uniform quantization grid), simply set `use_gptq` and `use_squeezellm` to `False` in `full_layer.py, get_config_settings()`.
 
+### Solver variants and tuning flags
+
+Optional solver changes live behind environment flags in
+`src/GPU/ALNS/tuning.py`, read once per process. Defaults reproduce the solver as
+it was measured, so an unmodified run behaves exactly as before and a benchmark
+turns one flag on in a fresh process. `docs/gpu-acceleration.md` records what each
+one was measured to do on Apple Silicon and what still needs measuring on CUDA.
+
+| Flag | Default | Effect |
+|---|---|---|
+| `AMVM_SKIP_SETTLED_LOCAL_SEARCH` | off | Skip a local-search pass whose starting point an earlier pass already examined without finding a move |
+| `AMVM_DEVICE_RESIDENT_SWAP` | off | Reduce the swap pass to its best candidate on the device, one synchronization per pass |
+| `AMVM_BUDGET_ROW_TILE` | off | Derive the row tile from `AMVM_SWAP_MEMORY_BUDGET_MB` instead of the fixed 256 rows |
+| `AMVM_PRUNE_TO_INCUMBENT` | off | Drop candidates that can no longer beat the best one found so far. Measured a win on wide layers and a loss on narrow ones |
+| `AMVM_BATCHED_ROWS` | off | Solve `AMVM_BATCH_SIZE` rows in one batched tensor program instead of one process per row. Not implemented for GPTQ starting weights |
+
+Tile and stage sizes are also flags: `AMVM_VARIABLE_TILE`, `AMVM_ROW_TILE`,
+`AMVM_CANDIDATE_CHUNK`, `AMVM_SWAP_MEMORY_BUDGET_MB`, `AMVM_PRUNE_FIRST_STAGE`,
+`AMVM_PRUNE_STAGE_GROWTH`, `AMVM_BATCH_CANDIDATE_TILE`.
+
+### Benchmarking a variant
+
+Capture the benchmark instances once (real opt-125m weights and wikitext2
+activations; the files are not checked in):
+
+```
+python experiments/capture_real_instances.py
+```
+
+Then run the standard protocol for a variant and compare:
+
+```
+AMVM_DEVICE_RESIDENT_SWAP=1 experiments/run_protocol.sh my-variant
+python experiments/summarize_results.py baseline my-variant
+```
+
+`experiments/bench_row_solve.py` has three modes. `trajectory` fixes the seed and
+the iteration count and records the whole objective sequence, so two runs that
+agree are exactly equivalent; use it for changes that must not alter the search.
+`speed` measures work per iteration. `quality` uses the production stopping rule,
+a wall-clock budget, and records the objective reached, which is the measure that
+decides whether a change is worth merging. Never quote wall-clock numbers from
+`experiments/profile_row_solve.py`: profiler overhead scales with operation count
+and biases exactly those comparisons.
+
+
 ### Algorithm Parameters
 These are adjustable parameters for our algorithm.
 

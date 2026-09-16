@@ -80,8 +80,10 @@ class BatchedRows:
         """Swap levels ``q1`` and ``q2`` between variables ``left`` and ``right``."""
         if not len(rows):
             return
-        delta = (torch.gather(self.levels, 1, q2[:, None])[:, 0]
-                 - torch.gather(self.levels, 1, q1[:, None])[:, 0])
+        # Index the levels of the rows being changed. Gathering positionally would
+        # silently read the first len(rows) rows' domains instead, which matters as
+        # soon as rows carry different level values or only some rows improve.
+        delta = self.levels[rows, q2] - self.levels[rows, q1]
         self.residual[:, rows] += delta[None, :] * (self.inputs[:, left] - self.inputs[:, right])
         self.weights[rows, left] = q2
         self.weights[rows, right] = q1
@@ -190,12 +192,15 @@ def best_per_row(batch, tag, maxima, squares, admissible):
                           dtype=batch.dtype)
     row_linf.scatter_reduce_(0, tag, keyed_linf, reduce="amin", include_self=True)
 
-    ties = keyed_linf == row_linf[tag]
+    # Rows with no admissible candidate keep an infinite best. Comparing that to
+    # the candidates' own infinite keys would call all of them ties and hand the
+    # row a swap it must not take, so admissibility gates the tie test.
+    ties = admissible & (keyed_linf == row_linf[tag])
     keyed_l2 = torch.where(ties, squares, infinity)
     row_l2 = torch.full_like(row_linf, float("inf"))
     row_l2.scatter_reduce_(0, tag, keyed_l2, reduce="amin", include_self=True)
 
-    winners = ties & (squares == row_l2[tag])
+    winners = ties & (squares == row_l2[tag]) & torch.isfinite(row_linf[tag])
     positions = torch.where(winners, torch.arange(len(tag), device=batch.device),
                             torch.full_like(tag, len(tag)))
     row_position = torch.full((batch.n_rows,), len(tag), device=batch.device,

@@ -144,3 +144,94 @@ def test_nonuniform_per_row_domains_are_respected(device):
         assert torch.isin(chosen, levels[row]).all()
         direct = batch.inputs @ chosen - batch.B_k[row]
         assert objective[row].item() == pytest.approx(direct.abs().max().item(), abs=1e-4)
+
+
+def test_swap_bookkeeping_survives_distinct_domains_and_partial_improvement(device):
+    """The cached residual must stay exact when rows have different level values.
+
+    Rows improve at different times, so an applied swap usually touches a subset of
+    rows. Reading level values positionally rather than by row index passes every
+    test where all rows share one domain and all rows improve, and silently
+    corrupts the residual otherwise.
+    """
+    batch = build(device, n_rows=4, seed=31)
+    batch.levels = torch.tensor([[-4.0, -1.0, 1.0, 4.0],
+                                 [-0.4, -0.1, 0.1, 0.4],
+                                 [-2.0, 0.0, 0.5, 3.0],
+                                 [-1.0, -0.5, 0.5, 1.0]], device=device)
+    batch.residual = batch.recompute_residual(batch.weights)
+    batch.objective = batch.residual.abs().max(dim=0).values
+    batch.l2 = batch.residual.square().sum(dim=0)
+
+    rows = torch.tensor([2, 3], device=device)  # deliberately not rows 0 and 1
+    left = torch.tensor([0, 1], device=device)
+    right = torch.tensor([2, 3], device=device)
+    batch.weights[rows, left] = 0
+    batch.weights[rows, right] = 1
+    batch.residual = batch.recompute_residual(batch.weights)
+
+    batch.apply_swaps(rows, left, right, torch.zeros_like(rows), torch.ones_like(rows))
+
+    for row in range(batch.n_rows):
+        direct = batch.inputs @ batch.levels[row][batch.weights[row]] - batch.B_k[row]
+        assert torch.allclose(batch.residual[:, row], direct, atol=1e-4), f"row {row}"
+
+
+def test_local_search_converges_without_hitting_the_pass_cap(device):
+    """A correct residual update settles quickly; a corrupted one cycles forever."""
+    batch = build(device, n_rows=6, n_variables=12, n_samples=40, seed=37)
+    batch.levels = torch.stack([torch.linspace(-1 - index, 1 + index, batch.n_levels)
+                                for index in range(batch.n_rows)]).to(device)
+    batch.residual = batch.recompute_residual(batch.weights)
+    batch.objective = batch.residual.abs().max(dim=0).values
+    batch.l2 = batch.residual.square().sum(dim=0)
+
+    active = torch.ones(batch.n_rows, dtype=torch.bool, device=device)
+    batched.local_search(batch, active, max_passes=200)
+
+    for row in range(batch.n_rows):
+        direct = batch.inputs @ batch.levels[row][batch.weights[row]] - batch.B_k[row]
+        assert torch.allclose(batch.residual[:, row], direct, atol=1e-4)
+    screen_rows = batch.residual.abs().T.topk(8, dim=1).indices
+    assert not bool(batched.swap_pass(batch, active, screen_rows).any())
+
+
+def test_a_row_with_no_admissible_candidate_gets_no_swap(device):
+    """A row whose candidates are all inadmissible must be left alone.
+
+    Every candidate of such a row carries an infinite sort key, and so does the
+    row's best. Treating those as ties hands the row the least-squares candidate
+    among moves it was not allowed to make, which raises its objective.
+    """
+    batch = build(device, n_rows=3, n_variables=8, n_samples=12, seed=41)
+    tag = torch.tensor([0, 0, 1, 1, 2], device=device)
+    maxima = torch.tensor([9.0, 9.5, 0.1, 0.2, 7.0], device=device)
+    squares = torch.tensor([1.0, 0.5, 4.0, 3.0, 0.25], device=device)
+    # Rows 0 and 2 have nothing admissible; row 1 has two admissible candidates.
+    admissible = torch.tensor([False, False, True, True, False], device=device)
+
+    _, position = batched.best_per_row(batch, tag, maxima, squares, admissible)
+
+    assert int(position[0]) == len(tag), "row 0 must have no winner"
+    assert int(position[2]) == len(tag), "row 2 must have no winner"
+    assert int(position[1]) == 2, "row 1 must take its smallest maximum"
+
+
+def test_swap_pass_with_a_weak_screen_still_never_worsens_a_row(device):
+    """A looser screen lets more inadmissible candidates through; none may be taken."""
+    batch = build(device, n_rows=6, n_variables=12, n_samples=40, seed=37)
+    batch.levels = torch.stack([torch.linspace(-1 - index, 1 + index, batch.n_levels)
+                                for index in range(batch.n_rows)]).to(device)
+    batch.residual = batch.recompute_residual(batch.weights)
+    batch.objective = batch.residual.abs().max(dim=0).values
+    batch.l2 = batch.residual.square().sum(dim=0)
+
+    active = torch.ones(batch.n_rows, dtype=torch.bool, device=device)
+    batched.local_search(batch, active, n_filters=40, max_passes=200)
+    settled = batch.objective.clone()
+
+    weak_screen = batch.residual.abs().T.topk(2, dim=1).indices
+    improved = batched.swap_pass(batch, active, weak_screen)
+
+    assert not bool(improved.any())
+    assert torch.all(batch.objective <= settled + 1e-5)
