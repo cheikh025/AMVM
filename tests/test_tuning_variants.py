@@ -277,5 +277,6 @@ def test_pruning_never_drops_a_candidate_that_ties_the_incumbent(make_state, mon
         left, right, delta, at_the_best)
 
     winner = int(exact_max.argmin())
-    assert pruned_max[winner] == pytest.approx(float(exact_max[winner]), abs=1e-6)
-    assert pruned_squares[winner] == pytest.approx(float(exact_squares[winner]), rel=1e-5)
+    assert float(pruned_max[winner]) == pytest.approx(float(exact_max[winner]), abs=1e-6)
+    assert float(pruned_squares[winner]) == pytest.approx(float(exact_squares[winner]),
+                                                          rel=1e-5)

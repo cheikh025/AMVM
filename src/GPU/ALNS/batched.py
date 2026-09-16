@@ -170,7 +170,7 @@ def exact_scores(batch, tag, left, right, delta, prune_bound):
                       (min(start + stage, n_samples) - start) * len(live))
         start += stage
         if start < n_samples:
-            live = live[maxima[live] <= prune_bound[tag[live]]]
+            live = live[maxima[live] <= tuning.prune_slack(prune_bound[tag[live]])]
             if len(live):
                 stage = int(min(max(tuning.PRUNE_FIRST_STAGE,
                                     min(stage * tuning.PRUNE_STAGE_GROWTH,

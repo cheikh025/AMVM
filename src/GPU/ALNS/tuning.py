@@ -61,6 +61,19 @@ PRUNE_FIRST_STAGE = _int("AMVM_PRUNE_FIRST_STAGE", 512)
 # still reaching large launches for the survivors.
 PRUNE_STAGE_GROWTH = _int("AMVM_PRUNE_STAGE_GROWTH", 4)
 
+
+def prune_slack(bound):
+    """Widen a pruning bound by a hair so ties are never dropped.
+
+    A candidate is dropped when its partial maximum passes the bound, and a
+    candidate that exactly ties the incumbent must survive to compete on the sum
+    of squares. The two sides of that comparison can be computed by different
+    kernels, and some backends pick kernels by tensor shape, so a tie can land a
+    unit in the last place apart. The slack is far below any difference that
+    changes a decision and keeps the tie rule intact.
+    """
+    return bound + bound.abs() * 1e-6 + 1e-12
+
 # A7: evaluate the L2 term from the Gram matrix instead of accumulating squares
 # over every residual row.
 GRAM_L2 = _flag("AMVM_GRAM_L2", False)

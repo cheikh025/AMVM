@@ -497,7 +497,7 @@ class LocalSearch:
             if start < total_rows:
                 # One synchronization per stage buys dropping every candidate that
                 # can no longer win.
-                live = live[maxima[live] <= prune_bound]
+                live = live[maxima[live] <= tuning.prune_slack(prune_bound)]
                 if len(live):
                     stage = int(min(max(tuning.PRUNE_FIRST_STAGE,
                                         min(stage * tuning.PRUNE_STAGE_GROWTH,
