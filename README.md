@@ -144,7 +144,8 @@ For the `opt-125m` model, an `outlier_range` of `0.2496` gives `0.45%` outliers.
 2. (Optional) The device is chosen automatically (CUDA → MPS → CPU). To force
    CPU even when an accelerator is present, pass an explicit device to the
    solver (`set_torch_device(torch.device("cpu"))`) or build the inputs on CPU.
-   On Apple Silicon (MPS) rows are quantized in-process regardless of `num_gpu`.
+   On Apple Silicon (MPS) rows are quantized in-process and share a single input
+   copy regardless of `num_gpu` (MPS is one unified-memory device).
 3. If you want to start from SqueezeLLM or GPTQ weights, go to [GPTQ](#running-with-gptq-starting-weights) or [SqueezeLLM](#running-with-squeezellm-starting-weights)
 
 

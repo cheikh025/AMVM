@@ -167,7 +167,7 @@ def quantize_indices_concurrently(indices: list[int] | np.ndarray, INPUTS_ARRAY:
             print("MPS backend detected: quantizing rows in-process (no worker fan-out)")
 
         for iteration in range(iteration_begin, iteration_end):
-            GPU_IDX = iteration % config.num_gpu
+            GPU_IDX = iteration % len(INPUTS_ARRAY)
             torch_device = ut.select_device(index=GPU_IDX)  # cuda -> mps -> cpu
 
 
@@ -221,7 +221,10 @@ def quantize_matrix(config: Config) -> np.ndarray:
     WEIGHTS_ARRAY = []
     INPUTS_ARRAY = []
 
-    for i in range(config.num_gpu):
+    # MPS is a single unified-memory device, so allocate one input copy instead of
+    # one per logical GPU. CUDA still gets one copy per physical GPU.
+    n_device_copies = 1 if ut.select_device().type == "mps" else config.num_gpu
+    for i in range(n_device_copies):
         torch_device = ut.select_device(index=i)  # cuda -> mps -> cpu
         wt = torch.from_numpy(config.weights).float().detach().to(torch_device)
         inputs_arr = torch.from_numpy(config.inputs).detach().float().to(torch_device)

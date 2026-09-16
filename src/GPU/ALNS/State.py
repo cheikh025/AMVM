@@ -159,7 +159,11 @@ class State:
             a = -2.0 ** (nQuantization-1)
             b = 2.0 ** (nQuantization-1) - 1
             self.step = ((b - a) / (self.num_levels - 1)/(2.0 ** (nQuantization-1)))
-            k_values = torch.arange(a, b + 1, dtype=torch.float64)  # CPU: MPS lacks float64
+            # Build the FIR levels on the working device (no CPU detour). MPS has
+            # no float64, so use the input dtype (float32) there; other devices
+            # keep float64 precision. Levels are cast to inputs.dtype afterwards.
+            fir_dtype = inputs.dtype if torch_device.type == "mps" else torch.float64
+            k_values = torch.arange(a, b + 1, dtype=fir_dtype, device=torch_device)
             self.quantization_levels = k_values / (2.0 ** (nQuantization-1))
         if use_gptq:
             zero = torch.round(-self.wMin / self.step)
