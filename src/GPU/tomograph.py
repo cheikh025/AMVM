@@ -72,7 +72,7 @@ def run_ALNS(A, p, rec_sart, nQuantized, device):
     alns_start = time.perf_counter()
     solution = alns_obj.solve()
     alns_time = time.perf_counter() - alns_start
-    if not torch.isin(solution.quantized_weights, domain).all():
+    if not torch.isin(solution.quantized_weights.cpu(), domain.cpu()).all():
         raise ValueError("Tomography solution lies outside the prescribed grey levels")
     alns_rec = solution.quantized_weights.detach().cpu().numpy().flatten()
     return alns_rec, alns_time

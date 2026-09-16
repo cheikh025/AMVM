@@ -141,12 +141,10 @@ outlier_range: the magnitude for a weight to be considered an outlier
  
 For the `opt-125m` model, an `outlier_range` of `0.2496` gives `0.45%` outliers. For any other range, use [analyze_data.ipynb](#analyze_dataipynb) to determine the ranges for specific percentage of outliers
 
-2. (Optional) If you want to use CPU only when GPUs are available, set `num_gpu` to 1 and in `full_layer.py`, at the beginning of the function `executeALNS`, comment out these two lines:
-
-```    
-if torch.cuda.is_available():
-    torch.cuda.set_device(device)
-```
+2. (Optional) The device is chosen automatically (CUDA → MPS → CPU). To force
+   CPU even when an accelerator is present, pass an explicit device to the
+   solver (`set_torch_device(torch.device("cpu"))`) or build the inputs on CPU.
+   On Apple Silicon (MPS) rows are quantized in-process regardless of `num_gpu`.
 3. If you want to start from SqueezeLLM or GPTQ weights, go to [GPTQ](#running-with-gptq-starting-weights) or [SqueezeLLM](#running-with-squeezellm-starting-weights)
 
 
