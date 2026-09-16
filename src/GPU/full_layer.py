@@ -159,13 +159,16 @@ def quantize_indices_concurrently(indices: list[int] | np.ndarray, INPUTS_ARRAY:
         iteration_end = min(config.rows_per_gpu * config.num_gpu * (loop_iteration + 1), TOTAL_ITERATIONS)
 
         child_processes = []
+        # MPS tensors cannot be shared across processes (only CPU/CUDA storages
+        # support the multiprocessing reduction), and MPS is a single device, so
+        # rows run in-process on Apple Silicon.
+        use_multiprocess = config.use_multiprocess and ut.select_device().type != "mps"
+        if config.use_multiprocess and not use_multiprocess and loop_iteration == 0:
+            print("MPS backend detected: quantizing rows in-process (no worker fan-out)")
 
         for iteration in range(iteration_begin, iteration_end):
-            GPU_IDX = iteration % config.num_gpu
-            if torch.cuda.is_available():
-                torch_device = torch.device(f'cuda:{GPU_IDX}')
-            else:
-                torch_device = torch.device('cpu')
+            GPU_IDX = iteration % len(INPUTS_ARRAY)
+            torch_device = ut.select_device(index=GPU_IDX)  # cuda -> mps -> cpu
 
 
             row_idx = indices[iteration]
@@ -181,7 +184,7 @@ def quantize_indices_concurrently(indices: list[int] | np.ndarray, INPUTS_ARRAY:
                     getattr(config, "acceptance_policy", "linf"))
 
             # Create all the child processes and start it
-            if config.use_multiprocess:
+            if use_multiprocess:
                 child_process = mp.Process(target=executeALNS, args=args)
                 child_processes.append((row_idx, child_process))
             else:
@@ -218,11 +221,11 @@ def quantize_matrix(config: Config) -> np.ndarray:
     WEIGHTS_ARRAY = []
     INPUTS_ARRAY = []
 
-    for i in range(config.num_gpu):
-        if torch.cuda.is_available():
-            torch_device = torch.device(f'cuda:{i}')
-        else:
-            torch_device = torch.device('cpu')
+    # MPS is a single unified-memory device, so allocate one input copy instead of
+    # one per logical GPU. CUDA still gets one copy per physical GPU.
+    n_device_copies = 1 if ut.select_device().type == "mps" else config.num_gpu
+    for i in range(n_device_copies):
+        torch_device = ut.select_device(index=i)  # cuda -> mps -> cpu
         wt = torch.from_numpy(config.weights).float().detach().to(torch_device)
         inputs_arr = torch.from_numpy(config.inputs).detach().float().to(torch_device)
         WEIGHTS_ARRAY.append(wt)

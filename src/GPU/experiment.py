@@ -143,8 +143,8 @@ if __name__ == '__main__':
             torch_device = torch.device(f'cuda:{i}')
         else:
             torch_device = torch.device('cpu')
-        WEIGHTS_ARRAY.append(torch.from_numpy(org_weights).double().to(torch_device))
-        INPUTS_ARRAY.append(torch.from_numpy(org_inputs).double().to(torch_device))
+        WEIGHTS_ARRAY.append(torch.from_numpy(org_weights).float().to(torch_device))
+        INPUTS_ARRAY.append(torch.from_numpy(org_inputs).float().to(torch_device))
 
     mp.set_start_method('spawn')  # Use fork for multiprocessing
     lock = mp.Lock()

@@ -150,11 +150,8 @@ def quantize_and_replace_matrix(model, DBname: str, train_loader, gptq_weight_pa
     this new quantized module
     """
 
-    # Use GPU if available
-    if torch.cuda.is_available():
-        device = torch.device("cuda:0")
-    else:
-        device = torch.device("cpu")
+    # Use the best available accelerator (cuda -> mps -> cpu)
+    device = ut.select_device()
 
 
     print(f"On {DBname}")

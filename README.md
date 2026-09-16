@@ -76,6 +76,16 @@ pip install -r requirements-test.txt
 The commands above install CPU PyTorch for tests. Production GPU runs need a
 PyTorch build compatible with the installed CUDA runtime.
 
+### Compute device
+
+When a device is not passed explicitly to the solver, it is resolved
+automatically in the order **CUDA → MPS → CPU**: NVIDIA GPU if available, then
+Apple Silicon Metal (`mps`), then CPU. Pass a device to `set_torch_device` (or
+build inputs on a chosen device) to override the automatic choice. On Apple
+Silicon the solver runs entirely on `mps`; the only unsupported operation is
+`float64` (used by the FIR path and one test), which stays on / falls back to
+CPU.
+
 ## Running/Usage
 
 - The script to quantize a model is at ```src/GPU/quantize_model.py```.
@@ -131,12 +141,11 @@ outlier_range: the magnitude for a weight to be considered an outlier
  
 For the `opt-125m` model, an `outlier_range` of `0.2496` gives `0.45%` outliers. For any other range, use [analyze_data.ipynb](#analyze_dataipynb) to determine the ranges for specific percentage of outliers
 
-2. (Optional) If you want to use CPU only when GPUs are available, set `num_gpu` to 1 and in `full_layer.py`, at the beginning of the function `executeALNS`, comment out these two lines:
-
-```    
-if torch.cuda.is_available():
-    torch.cuda.set_device(device)
-```
+2. (Optional) The device is chosen automatically (CUDA → MPS → CPU). To force
+   CPU even when an accelerator is present, pass an explicit device to the
+   solver (`set_torch_device(torch.device("cpu"))`) or build the inputs on CPU.
+   On Apple Silicon (MPS) rows are quantized in-process and share a single input
+   copy regardless of `num_gpu` (MPS is one unified-memory device).
 3. If you want to start from SqueezeLLM or GPTQ weights, go to [GPTQ](#running-with-gptq-starting-weights) or [SqueezeLLM](#running-with-squeezellm-starting-weights)
 
 
