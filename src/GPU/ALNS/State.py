@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 import copy
 import torch
+import random
 
 # Solution file
 
@@ -69,7 +70,8 @@ class State:
     def __init__(self, inputs: torch.tensor, weights: torch.tensor, original_weights: torch.tensor,
                  B_k: torch.tensor, nQuantization: int, num_partial: int, debug=False, LS_op=None,
                  torch_device=torch.device('cpu'), use_gptq=False, use_squeezellm=False, squeezellm_LUT:torch.Tensor=None,
-                 keep_outliers=False, outlier_range=0.0, use_fir=False):
+                 keep_outliers=False, outlier_range=0.0, use_fir=False, discrete_domain=None,
+                 acceptance_policy="linf", seed=0, fixed_mask=None):
         """
 
         If use_squeezellm is on, then squeezellm_LUT has to be sorted, and weights should be tensor of integers
@@ -85,9 +87,14 @@ class State:
 
         self.keep_outliers = keep_outliers
         self.outlier_range = outlier_range
+        if acceptance_policy not in {"linf", "linf_l2_tiebreak", "linf_l2_nonincrease"}:
+            raise ValueError(f"Unknown acceptance policy: {acceptance_policy}")
+        self.acceptance_policy = acceptance_policy
+        self.python_rng = random.Random(seed)
+        self.torch_generator = torch.Generator(device=torch_device).manual_seed(seed)
 
         self.inputs = inputs
-        self.weights = weights
+        self.weights = weights.clone()
         self.original_weights = original_weights
         self.B_k = B_k
         self.nQuantization = nQuantization
@@ -101,6 +108,12 @@ class State:
             print(f"Have {indices.numel()} outliers")
             # if len(indices) > 0:
             #     print(f"Outliers on indices {indices}, with weights {self.original_weights[indices]}")
+        self.fixed_mask = self.outlier_mask.bool()
+        if fixed_mask is not None:
+            fixed_mask = torch.as_tensor(fixed_mask, device=torch_device, dtype=torch.bool)
+            if fixed_mask.shape != self.weights.shape:
+                raise ValueError("Fixed-variable mask must match the initial solution")
+            self.fixed_mask |= fixed_mask
 
 
         # Variables for Greedy Repair algorithm  -----------------------------------------------------------------------
@@ -160,8 +173,27 @@ class State:
             self.steps = self.quantization_levels[1:] - self.quantization_levels[:-1]
 
 
+        if discrete_domain is not None:
+            if use_gptq or use_squeezellm or use_fir:
+                raise ValueError("Explicit domains cannot be combined with legacy domain modes")
+            self.quantization_levels = torch.as_tensor(discrete_domain, device=torch_device,
+                                                       dtype=inputs.dtype).clone()
+        self.quantization_levels = self.quantization_levels.to(dtype=inputs.dtype)
+        if (self.quantization_levels.ndim != 1 or self.quantization_levels.numel() == 0
+                or not torch.isfinite(self.quantization_levels).all()
+                or (self.quantization_levels[1:] < self.quantization_levels[:-1]).any()):
+            raise ValueError("The discrete domain must be a nonempty, finite, sorted vector")
+        self.num_levels = self.quantization_levels.numel()
+        self.maxq = self.num_levels - 1
+        if self.weights.is_floating_point() and not torch.equal(self.weights, self.weights.round()):
+            raise ValueError("Initial weights must be integer domain indices")
+        self.weights = self.weights.long()
+        if ((self.weights < 0) | (self.weights >= self.num_levels)).any():
+            raise ValueError("Initial index outside discrete domain")
+        self.steps = self.quantization_levels[1:] - self.quantization_levels[:-1]
+
         # Array that marks which elements should be repaired (used by the remove operators)
-        self.removed_array = torch.zeros(len(self.weights), dtype=torch.bool)  # Set this array to all False
+        self.removed_array = torch.zeros(len(self.weights), dtype=torch.bool, device=torch_device)  # Set this array to all False
 
         # Calculate the initial objective for the first time
         self.objective_value, non_abs_difference = utils.calculate_inf_norm_B_k(self.B_k,
@@ -193,88 +225,70 @@ class State:
         self.minX_k = torch.min(self.inputs, dim=1)[0]
 
 
+    def move_residual(self, indices, new_indices):
+        """Evaluate index assignments without mutating weights or residual caches."""
+        indices = torch.as_tensor(indices, device=self.torch_device, dtype=torch.long).reshape(-1)
+        new_indices = torch.as_tensor(new_indices, device=self.torch_device, dtype=torch.long).reshape(-1)
+        if indices.shape != new_indices.shape or indices.unique().numel() != indices.numel():
+            raise ValueError("A move must assign each variable at most once")
+        if ((new_indices < 0) | (new_indices >= self.num_levels)).any():
+            raise ValueError("Move outside discrete domain")
+        if (self.fixed_mask[indices] & (new_indices != self.weights[indices])).any():
+            raise ValueError("Move attempts to modify a fixed variable")
+        deltas = self.quantization_levels[new_indices] - self.quantization_levels[self.weights[indices]]
+        return self.signedD_ks + self.inputs[:, indices] @ deltas
+
+    def evaluate_move(self, indices, new_indices):
+        """Return the candidate infinity norm without applying the move."""
+        return self.move_residual(indices, new_indices).abs().max().item()
+
+    def _set_residual(self, residual):
+        """Refresh all objective caches from a residual in the input dtype."""
+        self.signedD_ks = residual
+        self.absD_ks = residual.abs()
+        rows = self.absD_ks.topk(self.num_partial).indices
+        self.L_set = (residual[rows], rows)
+        self.objective_value = self.absD_ks.max().item()
+        self.L2_norm = residual.square().sum()
+
+    def apply_move(self, indices, new_indices):
+        """Commit one move and immediately refresh residual and objective caches."""
+        residual = self.move_residual(indices, new_indices)
+        self.weights[indices] = torch.as_tensor(new_indices, device=self.torch_device,
+                                                dtype=self.weights.dtype)
+        self._set_residual(residual)
+        self.eval_flag, self.recalculate_flag = FULL, False
+        return self.objective_value
+
+    def accepts(self, candidate_linf, candidate_l2, *, incumbent_linf=None,
+                incumbent_l2=None, epsilon=0.0):
+        """Apply the configured infinity/L2 acceptance policy."""
+        incumbent_linf = self.objective_value if incumbent_linf is None else incumbent_linf
+        incumbent_l2 = self.L2_norm if incumbent_l2 is None else incumbent_l2
+        linf_improves = candidate_linf < incumbent_linf - epsilon
+        linf_ties = abs(candidate_linf - incumbent_linf) <= epsilon
+        if self.acceptance_policy == "linf":
+            return linf_improves
+        if self.acceptance_policy == "linf_l2_tiebreak":
+            return linf_improves or (linf_ties and candidate_l2 < incumbent_l2)
+        return linf_improves and candidate_l2 <= incumbent_l2
+
     def objective(self) -> float:
-        # Returns value of infnorm(W @ X^T)
-        if self.eval_flag == FULL:
-            if len(self.changes) == 0:
-                # If there are no changes, just return
-                self.recalculate_flag = False
-                return self.objective_value
+        """Read the objective; support legacy pending-index changes for compatibility.
 
-            change_arr = torch.zeros(len(self.inputs), dtype=torch.float, device=self.torch_device)  # Store total changes here
-            prev_step = self.step
-            for idx, delta in self.changes:
-                # Note: if squeezeLLM is on, then delta cannot be more than 1.
-                if self.use_squeezellm:
-                    # Calculate the new step, this is based on delta
-                    # Integer weight is already updated
-                    if delta == 1:
-                        # q[w[i+1]] - q[w[i]]
-                        self.step = self.steps[self.weights[idx] - 1]
-                    elif delta == -1:
-                        self.step = self.steps[self.weights[idx]]
-
-                # Apply changes sequentially
-                change_arr += torch.flatten(self.step * delta * self.inputs[:, idx])  # Apply these changes
-
-            self.step = prev_step  # Return to old step to prevent any changes from affecting other code
-
-            if self.recalculate_flag:  # Update D_ks and L_set only if we have recalculate flag
-                self.changes.clear()  # Remove change queue
-
-                # Apply the changes to the D_ks
-                self.signedD_ks += change_arr
-                self.absD_ks = torch.abs(self.signedD_ks)
-
-                # Update L_set
-                L_set_ind = self.absD_ks.topk(self.num_partial)[1]
-                self.L_set = (self.signedD_ks[L_set_ind], L_set_ind)
-
-                # Update objective value
-                self.objective_value = abs(self.L_set[0][0]).item()
-
-                self.L2_norm = torch.sum(self.absD_ks * self.absD_ks)
-
-                # Debugging output
-                if self.debug:
-                    print(f"Evaluated value of new state: {self.objective_value}")
-                    print(f"Evaluated l2 norm of new state: {self.L2_norm}")
-
-                # Testing correctness for L_inf, L2 norm
-                # When running tests, comment this out. This is slow
-                # ------------------------------------------------------------------
-                # print("Checking correctness")
-                # test_obj_value, non_abs_difference = utils.calculate_inf_norm_B_k(self.B_k,
-                #                                                                         self.get_quantized_weights(),
-                #                                                                         self.inputs)
-
-                # if abs(test_obj_value - self.objective_value) > 1e-3:
-                #     print("objective value is incorrect!")
-                #     print(f"Obj value: {self.objective_value}, actual val: {test_obj_value}")
-                # print("Checking l2 norm")
-                # actual_l2_norm = utils.calculate_l2_norm(self.original_weights, self.get_quantized_weights(), self.inputs) ** 2
-                # if abs(actual_l2_norm - self.L2_norm) > 1:
-                #     print("l2 norm value is incorrect!")
-                #     print(f"Obj value: {actual_l2_norm}, actual val: {self.L2_norm}")
-                # --------------------------------------------------------------------------
-
-
-                self.recalculate_flag = False  # Next iteration doesn't need to recalculate
-                return self.objective_value
-            else:
-                # TODO: change this back to just 1 return
-                return torch.max(torch.abs(self.signedD_ks + change_arr)).item()  # Calculate these changes but don't apply it
+        New operators use evaluate_move/apply_move. Legacy queued edits are decoded
+        directly so repeated and nonuniform edits cannot use an inferred step.
+        """
         if self.eval_flag == PARTIAL_D_SINGLE_CHANGE:
-            change_arr = torch.zeros(len(self.inputs), dtype=torch.float, device=self.torch_device)  # Store total changes here
-            delta, idx = self.change    # extract from the tuple
-            change_arr += torch.flatten(self.step * delta * self.inputs[:, idx])  # Apply these changes
-            updated_signedD_ks = self.signedD_ks + change_arr
-          #  Updated_absD_ks = torch.abs(updated_signedD_ks)
-          #  new_L2_norm = torch.sum(Updated_absD_ks * Updated_absD_ks)
-          #  if new_L2_norm > self.L2_norm:
-          #      return np.inf
-          #  # Compute the objective value based on the updated signedD_ks
-            return torch.max(torch.abs(updated_signedD_ks)).item()
+            delta, idx = self.change
+            return self.evaluate_move([idx], [self.weights[idx] + delta])
+        if self.changes:
+            residual = self.inputs @ self.get_quantized_weights() - self.B_k
+            if not self.recalculate_flag:
+                return residual.abs().max().item()
+            self._set_residual(residual)
+            self.changes.clear()
+        self.recalculate_flag = False
         return self.objective_value
 
 
@@ -294,8 +308,4 @@ class State:
         """Returns q for each weight
         Returns a new integer array"""
 
-        int_weights = torch.zeros(len(quantized_weights)).int()
-        for i in range(len(quantized_weights)):
-            int_weights[i] = round((quantized_weights[i] - self.wMin) / self.step)
-        return int_weights
-
+        return (quantized_weights[:, None] - self.quantization_levels[None, :]).abs().argmin(dim=1)

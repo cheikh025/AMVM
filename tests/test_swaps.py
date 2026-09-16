@@ -36,3 +36,38 @@ def test_screened_out_rows_are_safe_for_every_adjacent_swap(make_state):
             candidate[i], candidate[j] = candidate[j].clone(), candidate[i].clone()
             residual = state.inputs @ candidate - state.B_k
             assert torch.all(residual[omitted].abs() < state.objective())
+
+
+def test_bounded_swap_uses_physical_nonuniform_delta(make_state):
+    state = make_state(torch.eye(4), [1, 1, 2, 2], [10, 1, 1, 10],
+                       original=[0, 11, 0, 11], levels=[0, 1, 10, 11], bits=2)
+    search = LocalSearch(state)
+    assert search._perform_swap_bounded(variable_tile=1, row_tile=1,
+                                        candidate_chunk=1)
+    expected = state.inputs @ state.get_quantized_weights() - state.B_k
+    torch.testing.assert_close(state.signedD_ks, expected)
+    assert state.objective() == pytest.approx(0)
+
+
+def test_bounded_swap_accepts_l2_tiebreak_without_linf_gain(make_state):
+    # Swapping the two variables ties the infinity norm (2 -> 2) while halving the
+    # sum of squares (8 -> 4), so only the L2 tie-break policy should take it.
+    matrix = [[2.0, 2.0], [0.0, 2.0]]
+    tie = make_state(matrix, [0, 1], [0.0, 0.0], acceptance_policy="linf_l2_tiebreak")
+    assert tie.objective() == pytest.approx(2.0)
+    assert tie.L2_norm.item() == pytest.approx(8.0)
+
+    search = LocalSearch(tie)
+    assert search._perform_swap_bounded(variable_tile=1, row_tile=1, candidate_chunk=1)
+    expected = tie.inputs @ tie.get_quantized_weights() - tie.B_k
+    torch.testing.assert_close(tie.signedD_ks, expected)
+    assert tie.weights.tolist() == [1, 0]
+    assert tie.objective() == pytest.approx(2.0)
+    assert tie.L2_norm.item() == pytest.approx(4.0)
+
+    # The pure infinity-norm policy must reject a swap that does not lower it.
+    pure = make_state(matrix, [0, 1], [0.0, 0.0], acceptance_policy="linf")
+    pure_search = LocalSearch(pure)
+    assert pure_search._perform_swap_bounded(variable_tile=1, row_tile=1,
+                                             candidate_chunk=1) is False
+    assert pure.weights.tolist() == [0, 1]

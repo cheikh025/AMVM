@@ -8,6 +8,7 @@ from alns.stop import *
 from .remove_operators import *
 from .repair_operators import *
 import torch
+import random
 
 from typing import Optional, Any
 # Solution file
@@ -63,7 +64,9 @@ class ALNS:
 
     def __init__(self, initial_row: torch.tensor, original_row: torch.tensor, inputs: torch.tensor,
                 nQuantization: int, use_gptq=False, use_squeezellm=False, squeezellm_LUT=None,
-                keep_outliers=False, outlier_range=0.0, debug=False, use_fir=False):
+                keep_outliers=False, outlier_range=0.0, debug=False, use_fir=False,
+                discrete_domain=None, acceptance_policy="linf", seed=SEED,
+                B_k=None, fixed_mask=None):
         """
 
         :param initial_row: Initial row of size (M, ), integers (found from FindNearest)
@@ -81,13 +84,17 @@ class ALNS:
         self.use_squeezellm = use_squeezellm
         self.squeezellm_LUT = squeezellm_LUT
         self.use_fir = use_fir
+        self.discrete_domain = discrete_domain
+        self.acceptance_policy = acceptance_policy
+        self.seed = seed
+        self.fixed_mask = fixed_mask
 
 
         self.keep_outliers = keep_outliers
         self.outlier_range = outlier_range
 
-        np.random.seed(SEED)
-        self.rnd_state = np.random.RandomState(SEED)  # Random number generator passed into ALNS
+        self.rnd_state = np.random.RandomState(seed)  # Random number generator passed into ALNS
+        self.python_rng = random.Random(seed)
         # self.rnd_state = np.random.RandomState()
         self.alns = package_alns.ALNS(self.rnd_state)  # Initialize ALNS class
         self.LS_op = None
@@ -95,7 +102,7 @@ class ALNS:
         # Initial values: optional parameters
         # self.num_partials = int(len(inputs) * L_SET_PERCENTAGE)
         self.num_partials = 100
-        self.B_k = UNINITIALIZED_FLAG
+        self.B_k = UNINITIALIZED_FLAG if B_k is None else B_k
         self.stopping_criteria = MaxRuntime(250)  # Initial value: stopping criteria is 250 seconds
         self.acceptance_criteria = HillClimbing()  # Default value: hill climbing
         self.torch_device = torch.device('cpu')  # Either cpu or gpu
@@ -157,7 +164,11 @@ class ALNS:
                               num_partial=self.num_partials, debug=self.debug, LS_op=self.LS_op,
                               torch_device=torch.device(self.torch_device), use_gptq=self.use_gptq,
                               use_squeezellm=self.use_squeezellm, squeezellm_LUT=self.squeezellm_LUT,
-                              keep_outliers=self.keep_outliers, outlier_range=self.outlier_range, use_fir=self.use_fir)
+                              keep_outliers=self.keep_outliers, outlier_range=self.outlier_range,
+                              use_fir=self.use_fir, discrete_domain=self.discrete_domain,
+                              acceptance_policy=self.acceptance_policy, seed=self.seed,
+                              fixed_mask=self.fixed_mask)
+        initial_state.python_rng = self.python_rng
 
 
         initial_objective = initial_state.objective()
@@ -180,6 +191,9 @@ class ALNS:
 
         # Make a solution class, populate it with the result and return it
         quantized_weights = best_state.get_quantized_weights()
+        if not torch.isin(quantized_weights[~best_state.fixed_mask],
+                          best_state.quantization_levels).all():
+            raise RuntimeError("Solver returned a mutable value outside the discrete domain")
         # inf_norm_value = utils.calculate_inf_norm_B_k(best_state.B_k, quantized_weights, best_state.inputs)[0]  # Correct
         inf_norm_value = best_state.objective()
 

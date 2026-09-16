@@ -34,8 +34,11 @@
   - Even with `debug` mode off, it still produces quite a lot of output. I would suggest always redirecting output to a file:
     - `python3 src/GPU/quantize_model.py > [filename].txt`
   - When saving the model (specified by `save_weights=True` and `[stored_weights_path]`), make sure you are saving to a new `.h5` file, otherwise it won't save to existing file.
-  - There isn't a flag to turn off L2 norm hill-climbing optimization, but I marked where I used L2 norm in the comment `#L2NORM`.
-    - There are only 2 files that use this: `State.py` and `repair_operators.py`, so check those
+  - Acceptance policy controls the L2 hill-climbing gate. Quantization
+    (`Config.acceptance_policy`) defaults to `linf_l2_nonincrease`: an accepted
+    move must lower the infinity norm without increasing the sum of squares.
+    The core solver and tomography default to pure `linf`. Set `linf` to turn
+    the gate off, or `linf_l2_tiebreak` to also take L2-only ties.
 
 
 ### File Structure
@@ -65,11 +68,13 @@ or4ai_quantization
 - saved .h5 weights should be in `full_data_output`
 
 ## Setup
-Install the necessary Python packages in ```src/requirements.txt```.
+Install the test and solver dependencies from the repository root.
 ```
-pip install -r src/requirements.txt
+pip install torch==2.3.1 --index-url https://download.pytorch.org/whl/cpu
+pip install -r requirements-test.txt
 ```
-Note: `torch` needs to be installed with CUDA support. I used `torch2.3.1` and CUDA version `12.2`
+The commands above install CPU PyTorch for tests. Production GPU runs need a
+PyTorch build compatible with the installed CUDA runtime.
 
 ## Running/Usage
 
@@ -103,6 +108,9 @@ nQuantized: number of bits
 use_gptq: flag to use gptq_matrix as starting weights
 debug: debug flag during ALNS
 debug_process: prints debug info for code other than ALNS (process info, etc.)
+seed: base seed; row i uses seed + i
+acceptance_policy: linf, linf_l2_tiebreak, or linf_l2_nonincrease
+fallback_policy: requested_domain or error
 
 use_squeezellm: flag to use squeezellm as starting weights
 squeezellm_LUT: lookup table associated with this matrix
@@ -160,15 +168,18 @@ If you want to run it from nearest (this only works for uniform quantization gri
 ### Algorithm Parameters
 These are adjustable parameters for our algorithm.
 
+The core `ALNS` constructor accepts the input matrix, original row, initial
+domain indices, optional target vector `B_k`, physical `discrete_domain`, and
+`fixed_mask`. Application wrappers should construct these values before calling
+the solver. The legacy `set_B_k` method remains available for existing callers.
+
 - In ```src/GPU/ALNS/operator_utils.py:```
   - `DESTROY_RATE` percentage of the array to change after every destroy/repair pair
   - `ALPHA_COEFFICIENT` (not used until `worst_remove` is implemented): coefficient of `a` for `worst_remove` scoring criteria
 
-- In `src/GPU/ALNS/local_search.py:`
-  - `SWAP_EVAL_BATCHES` number of batches we have for `q_1` weights during swap
-  - `NUM_FILTERS` size of k_e, used for epsilon filtering (filtering swaps based off small number of D_ks)
-  - `EPSILON` new swap has to be better by at least `EPSILON` (prevents infinite loops)
-  - `BIAS`  giving a more conservative estimate for swap condition (to prevent infinite loops)
+- In `src/GPU/ALNS/local_search.py`, `NUM_FILTERS` controls screening rows and
+  `EPSILON` is the minimum accepted infinity-norm improvement. Swap groups,
+  screening rows, and exact candidate evaluation are processed in bounded tiles.
 
 
 
@@ -408,4 +419,3 @@ To run the FIR design experiment:
    ```bash
    python src/GPU/gurobi_fir.py
    ```
-

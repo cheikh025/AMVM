@@ -26,7 +26,8 @@ def device():
 @pytest.fixture
 def make_state(device):
     def factory(A, indices, b, *, original=None, bits=1, levels=None,
-                keep_outliers=False, outlier_range=0.0, dtype=torch.float32):
+                keep_outliers=False, outlier_range=0.0, dtype=torch.float32,
+                acceptance_policy="linf"):
         A = torch.as_tensor(A, dtype=dtype, device=device)
         if original is None:
             original = torch.linspace(0, 1, A.shape[1], dtype=dtype, device=device)
@@ -44,5 +45,6 @@ def make_state(device):
                            torch.as_tensor(levels, dtype=dtype, device=device)),
             keep_outliers=keep_outliers,
             outlier_range=outlier_range,
+            acceptance_policy=acceptance_policy,
         )
     return factory

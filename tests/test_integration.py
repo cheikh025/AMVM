@@ -26,9 +26,20 @@ def test_solver_returns_feasible_solution_with_consistent_objective(device):
     assert torch.all((result.quantized_weights == 0) | (result.quantized_weights == 1))
 
 
-@pytest.mark.known_bug
-@pytest.mark.xfail(reason="B04: tomography State rebuilds grey levels from SART extrema",
-                   raises=AssertionError)
+def test_solver_core_accepts_target_domain_and_fixed_mask(device):
+    A = torch.eye(2, device=device)
+    solver = ALNS(torch.tensor([0, 1], device=device),
+                  torch.tensor([0., 1.], device=device), A, 1,
+                  discrete_domain=torch.tensor([0., 3.], device=device),
+                  B_k=torch.tensor([3., 0.], device=device),
+                  fixed_mask=torch.tensor([True, False], device=device))
+    solver.set_torch_device(device)
+    solver.set_stopping_criteria(MaxIterations(2))
+    result = solver.solve()
+    assert result.quantized_weights[0].item() == 0
+    assert torch.isin(result.quantized_weights, torch.tensor([0., 3.], device=device)).all()
+
+
 def test_tomography_preserves_prescribed_grey_levels(monkeypatch):
     # ASTRA is an import-only substitute: run_ALNS itself uses no ASTRA operations.
     # Execute the real application wrapper, real State, and real ALNS with zero iterations.
@@ -42,9 +53,6 @@ def test_tomography_preserves_prescribed_grey_levels(monkeypatch):
     assert np.isin(result, [0, 255]).all(), f"Solver used incorrect grey levels: {result}"
 
 
-@pytest.mark.known_bug
-@pytest.mark.xfail(reason="B09: retry dispatch reruns all rows, not just failed rows",
-                   raises=AssertionError)
 def test_quantization_retries_only_failed_rows(tmp_path, monkeypatch):
     import full_layer
     from utils.utils import save_tensors_to_hdf5

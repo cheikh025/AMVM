@@ -5,11 +5,6 @@ on:
     branches: [main, "test/**", "fix/**"]
   pull_request:
   workflow_dispatch:
-    inputs:
-      audit_known_bugs:
-        description: Treat documented known bugs as ordinary failures
-        type: boolean
-        default: false
 
 permissions:
   contents: read
@@ -30,7 +25,6 @@ jobs:
       AMVM_TEST_DEVICE: cpu
       OMP_NUM_THREADS: "1"
       MKL_NUM_THREADS: "1"
-      AUDIT_KNOWN_BUGS: ${{ inputs.audit_known_bugs || false }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -44,12 +38,7 @@ jobs:
           python -m pip install -r requirements-test.txt
           python -m pip check
       - name: Run unit and integration tests
-        run: |
-          args=()
-          if [ "$AUDIT_KNOWN_BUGS" = "true" ]; then
-            args+=(--runxfail)
-          fi
-          python -m pytest "${args[@]}" --junitxml=test-results.xml
+        run: python -m pytest --junitxml=test-results.xml
       - name: Publish test report
         if: always()
         uses: actions/upload-artifact@v4

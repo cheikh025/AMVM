@@ -1,4 +1,7 @@
 from dataclasses import dataclass
+import json
+import random
+import subprocess
 
 import sys
 
@@ -51,7 +54,8 @@ def CalcPrintNorms(X, originalW, Wq, name, iteration):
 def executeALNS(iteration: int, nQuantized: int, output_filename: str, save_to_file: bool, save_weights: bool,
                 seconds: int, debug: bool, device: torch.device, inputs: torch.tensor, weights: torch.tensor,
                 use_gptq=False, gptq_weights: torch.tensor=None, use_squeezellm=False, squeezellm_LUT: torch.Tensor=None,
-                keep_outliers: bool=False, outlier_range: float=0.0):
+                keep_outliers: bool=False, outlier_range: float=0.0, seed: int=9101,
+                acceptance_policy: str="linf"):
     """
     weights is one row (m, )
     See Config.py class for what these variables mean
@@ -65,6 +69,9 @@ def executeALNS(iteration: int, nQuantized: int, output_filename: str, save_to_f
         print(f"Squeezellm on iteration {iteration} is {squeezellm_LUT}")
 
     solution = None
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
     try:
         sampledInput = inputs
         original_row = weights
@@ -82,7 +89,8 @@ def executeALNS(iteration: int, nQuantized: int, output_filename: str, save_to_f
         # ALNS
         print("Starting...")
         alns_obj = ALNS(nearQ, original_row, sampledInput, nQuantized, debug=debug, use_gptq=use_gptq, use_squeezellm=use_squeezellm, squeezellm_LUT=squeezellm_LUT,
-                        keep_outliers=keep_outliers, outlier_range=outlier_range)
+                        keep_outliers=keep_outliers, outlier_range=outlier_range,
+                        seed=seed, acceptance_policy=acceptance_policy)
         # Set the number of seconds here, using swap, and the device
         alns_obj.set_stopping_criteria(stopping_criteria=MaxRuntime(seconds))
 
@@ -112,12 +120,9 @@ def executeALNS(iteration: int, nQuantized: int, output_filename: str, save_to_f
 
         if save_to_file:
             print(f"Saving to file on iteration {iteration}")
-            try:
-                solution.save_to_file(output_filename, mode,
-                                      print_headers=print_headers,
-                                      index_name="Row")  # Save it to a file, print header if it's first iteration
-            except Exception:
-                print("Caught error in saving to file")
+            solution.save_to_file(output_filename, mode,
+                                  print_headers=print_headers,
+                                  index_name="Row")
 
         # Save weights to file too
         if save_weights:
@@ -128,18 +133,18 @@ def executeALNS(iteration: int, nQuantized: int, output_filename: str, save_to_f
             # Delete file contents first
             try:
                 os.remove(weight_file_path)
-            except Exception as e:
-                if debug:
-                    print("error with removing weight file path")
+            except FileNotFoundError:
+                pass
             ut.save_tensors_to_hdf5(data_dict, weight_file_path)
 
+    except torch.cuda.OutOfMemoryError as e:
+        print(f"Row {iteration} ran out of device memory; it will be retried alone")
+        return {"row": iteration, "status": "oom", "error": str(e)}
     except Exception as e:
-        # Error with running
-        print(f"Solving row {iteration} raised an issue, not writing to file")
-        print(e)
-    finally:
-        print(f"Freeing cache for iteration {iteration}")
-        torch.cuda.empty_cache()
+        print(f"Solving row {iteration} failed: {e}")
+        raise
+
+    return {"row": iteration, "status": "success", "error": None}
 
 
 def quantize_indices_concurrently(indices: list[int] | np.ndarray, INPUTS_ARRAY: list[torch.Tensor], WEIGHTS_ARRAY: list[torch.Tensor], config: Config):
@@ -172,22 +177,28 @@ def quantize_indices_concurrently(indices: list[int] | np.ndarray, INPUTS_ARRAY:
                 gptq_row = config.gptq_matrix[row_idx, :].clone().to(torch_device)
             args = (row_idx, config.nQuantized, config.output_filename, config.save_to_file, config.save_weights, config.seconds, config.debug,
                     torch_device, INPUTS_ARRAY[GPU_IDX], torch_weight_row, config.use_gptq, gptq_row, config.use_squeezellm, config.squeezellm_LUT,
-                    config.keep_outliers, config.outlier_range)
+                    config.keep_outliers, config.outlier_range, getattr(config, "seed", 9101) + int(row_idx),
+                    getattr(config, "acceptance_policy", "linf"))
 
             # Create all the child processes and start it
             if config.use_multiprocess:
                 child_process = mp.Process(target=executeALNS, args=args)
-                child_processes.append(child_process)
+                child_processes.append((row_idx, child_process))
             else:
                 executeALNS(*args)
 
-        for child_process in child_processes:
+        for _, child_process in child_processes:
             child_process.start()
         # Wait for all the child processes to finish running
-        for child_process in child_processes:
+        failed_workers = []
+        for row_idx, child_process in child_processes:
             child_process.join()
+            if child_process.exitcode != 0:
+                failed_workers.append((int(row_idx), child_process.exitcode))
             if config.debug_process:
                 print(f"Child process {child_process} done")
+        if failed_workers:
+            raise RuntimeError(f"Row workers failed: {failed_workers}")
         print(
             f"This iteration of {iteration_end - iteration_begin}, iteration_begin is {iteration_begin}, iteration_end is {iteration_end} rows took {time.time() - timeStart} sec")
 
@@ -229,6 +240,8 @@ def quantize_matrix(config: Config) -> np.ndarray:
     quantized_matrix = np.zeros(config.weights.shape)  # initialize matrix with same size
 
     incomplete_row_indices = []
+    row_statuses = {int(i): "success" for i in unquantized_indices}
+    fallback_rows = []
 
     CNT_FIND_NEAREST = 0
     for row_idx in range(config.index_iterations):
@@ -238,14 +251,15 @@ def quantize_matrix(config: Config) -> np.ndarray:
             dict = ut.load_tensors_from_hdf5(row_filename)
             for key, quantized_row in dict.items():
                 quantized_matrix[row_idx, :] = quantized_row
-        except Exception as e:
+        except (FileNotFoundError, OSError):
             # Row was not quantized, then add this to incomplete row_indices
             incomplete_row_indices.append(row_idx)
+            row_statuses[int(row_idx)] = "retrying"
 
         # Remove temporary file
         try:
             os.remove(row_filename)
-        except Exception as e:
+        except FileNotFoundError:
             if config.debug_process:
                 print("error with removing filename")
 
@@ -257,7 +271,7 @@ def quantize_matrix(config: Config) -> np.ndarray:
     print(f"using {config.rows_per_gpu} rows per gpu")
     if incomplete_row_indices != []:
         print(f"Incomplete row indices is not empty, it has size {len(incomplete_row_indices)}")
-        quantize_indices_concurrently(unquantized_indices, INPUTS_ARRAY, WEIGHTS_ARRAY, config)
+        quantize_indices_concurrently(incomplete_row_indices, INPUTS_ARRAY, WEIGHTS_ARRAY, config)
     # TODO: put this in function instead of reusing code
     for incomplete_row_index in incomplete_row_indices:
         print(f"Retrying incomplete row index {incomplete_row_index}")
@@ -267,13 +281,25 @@ def quantize_matrix(config: Config) -> np.ndarray:
             for key, quantized_row in dict.items():
                 quantized_matrix[incomplete_row_index, :] = quantized_row
             print(f"Successfully quantized incomplete row idx {incomplete_row_index}")
-        except Exception as e:
-            # Row was not quantized, get nearest value and store solution
+            row_statuses[int(incomplete_row_index)] = "retried"
+        except (FileNotFoundError, OSError) as e:
+            # Row was not quantized. Use an explicit mode-preserving fallback.
             if config.save_weights:
-                nearWq, nearQ = FindNearestNumpy(config.weights[incomplete_row_index, :], config.nQuantized)
-                quantized_matrix[incomplete_row_index] = nearWq
-                print(f"Resorted to findnearest for row idx {incomplete_row_index}")
+                if getattr(config, "fallback_policy", "requested_domain") == "error":
+                    raise RuntimeError(f"Row {incomplete_row_index} failed after retry") from e
+                if getattr(config, "use_squeezellm", False):
+                    levels = np.asarray(config.squeezellm_LUT[incomplete_row_index].cpu())
+                    row = config.weights[incomplete_row_index]
+                    quantized_matrix[incomplete_row_index] = levels[np.abs(row[:, None] - levels).argmin(axis=1)]
+                elif getattr(config, "use_gptq", False):
+                    quantized_matrix[incomplete_row_index] = np.asarray(config.gptq_matrix[incomplete_row_index].cpu())
+                else:
+                    nearWq, nearQ = FindNearestNumpy(config.weights[incomplete_row_index, :], config.nQuantized)
+                    quantized_matrix[incomplete_row_index] = nearWq
+                print(f"Used requested-domain fallback for row idx {incomplete_row_index}")
                 CNT_FIND_NEAREST += 1
+                fallback_rows.append(int(incomplete_row_index))
+                row_statuses[int(incomplete_row_index)] = "fallback"
 
     if config.save_weights:
         # Then store the quantized matrix in the file
@@ -282,6 +308,31 @@ def quantize_matrix(config: Config) -> np.ndarray:
         print(f"Stored DB {config.DBname}")
 
         print(f"Used {CNT_FIND_NEAREST} ways of find_nearest")
+
+        manifest_path = f"{config.stored_weights_path}.run.json"
+        commit = None
+        dirty_worktree = None
+        try:
+            commit = subprocess.run(["git", "rev-parse", "HEAD"], check=True,
+                                    capture_output=True, text=True).stdout.strip()
+            porcelain = subprocess.run(["git", "status", "--porcelain"], check=True,
+                                       capture_output=True, text=True).stdout
+            dirty_worktree = bool(porcelain.strip())
+        except (OSError, subprocess.CalledProcessError):
+            pass
+        with open(manifest_path, "w", encoding="utf-8") as handle:
+            json.dump({
+                "commit": commit,
+                "dirty_worktree": dirty_worktree,
+                "seed": getattr(config, "seed", 9101),
+                "acceptance_policy": getattr(config, "acceptance_policy", "linf"),
+                "fallback_policy": getattr(config, "fallback_policy", "requested_domain"),
+                "fallback_rows": fallback_rows,
+                "row_statuses": row_statuses,
+                "n_quantized": config.nQuantized,
+                "use_gptq": getattr(config, "use_gptq", False),
+                "use_squeezellm": getattr(config, "use_squeezellm", False),
+            }, handle, indent=2, sort_keys=True)
 
     # Then continue
     print(f"Quantizing db {config.DBname} took {time.time() - timeStart} sec in total.")
@@ -430,7 +481,7 @@ def full_layer_path():
     if REMOVE_WEIGHT_FILE:
         try:
             os.remove(config.stored_weights_path)
-        except Exception:
+        except FileNotFoundError:
             if config.debug_process:
                 print("error with removing filename")
 
@@ -497,4 +548,3 @@ if __name__ == '__main__':
     torch.set_grad_enabled(False)
     mp.set_start_method('forkserver')  # Use fork for multiprocessing
     full_layer_path()
-

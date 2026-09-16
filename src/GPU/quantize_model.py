@@ -45,15 +45,11 @@ class QuantizedLinear(nn.Module):
 
     def forward(self, inputs: torch.tensor):
         if not self.has_quantized:
-            gc.collect()
-            torch.cuda.empty_cache()
             self.quantize_weights(inputs)
 
         # self.original_linear.weights.data = self.quantized_weights
         res = self.original_linear(inputs)
         del inputs
-        gc.collect()
-        torch.cuda.empty_cache()
         return res
 
 def replace_with_quantized(model) -> None:
@@ -227,9 +223,6 @@ def main(DS: str, model_path: str, gptq_weight_path: str, squeezellm_state_dict_
     Using calibration dataset DS, and starting weights at gptq_weight_path.
     If using squeezeLLM, provide the path to the state_dict
     """
-    # Environment variables for debugging
-    os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
-    os.environ['TORCH_USE_CUDA_DSA'] = "1"
     # Read in the model
     nSentence, tokenPerSentence = 128, 2048  # 128
 
@@ -265,6 +258,4 @@ if __name__ == '__main__':
     model_path = "facebook/opt-125m"
     squeezellm_state_dict_path = None#"./src/GPU/SqueezeLLM/dense_only_packed"
     main(DS, model_path, gptq_weight_path, squeezellm_state_dict_path)
-
-
 

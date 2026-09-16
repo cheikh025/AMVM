@@ -68,3 +68,10 @@ class Config:
 
     debug: bool
     debug_process: bool
+
+    seed: int = 9101
+    # Quantization keeps the L2 hill-climbing gate on by default (an accepted move
+    # must lower the infinity norm without increasing the sum of squares). Set to
+    # "linf" for pure minimax or "linf_l2_tiebreak" to also take L2-only ties.
+    acceptance_policy: str = "linf_l2_nonincrease"
+    fallback_policy: str = "requested_domain"
