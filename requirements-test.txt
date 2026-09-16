@@ -1,0 +1,8 @@
+# CPU PyTorch is installed separately; see tests/README.md.
+numpy==1.26.4
+pandas==2.2.3
+h5py==3.12.1
+alns==7.0.0
+pytest==8.3.5
+pillow==11.1.0
+scikit-image==0.25.2

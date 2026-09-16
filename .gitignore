@@ -1,7 +1,12 @@
+
 Quantization/code/data
 src/GPU/SqueezeLLM/models
 src/GPU/SqueezeLLM/
 *.txt
+!requirements-test.txt
+.pytest_cache/
+.venv/
+test-results.xml
 *__pycache__
 .idea
 *.csv
@@ -25,3 +30,4 @@ ml-1m/
 *.ipynb
 *.pdf
 *.npy
+*DS_Store

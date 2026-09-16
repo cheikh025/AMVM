@@ -1,4 +1,5 @@
 # Table Of Contents
+- [Regression tests and CI](tests/README.md)
 - [File Structure](#file-structure)
 - [Setup](#setup)
 - [Running/Usage](#runningusage)
@@ -407,5 +408,4 @@ To run the FIR design experiment:
    ```bash
    python src/GPU/gurobi_fir.py
    ```
-
 
