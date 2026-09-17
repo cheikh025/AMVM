@@ -147,8 +147,85 @@ def executeALNS(iteration: int, nQuantized: int, output_filename: str, save_to_f
     return {"row": iteration, "status": "success", "error": None}
 
 
+def quantize_indices_batched(indices, inputs: torch.Tensor, weights: torch.Tensor,
+                             config: Config) -> None:
+    """Quantize rows in batched groups, writing the same per-row files as the workers.
+
+    All rows of a matrix share the activation matrix and are independent, so this
+    path holds a group of them in one tensor program instead of one Python loop
+    per row. It writes the same temporary files the per-row workers write, so
+    everything downstream is unchanged.
+    """
+    from ALNS import batched, tuning as alns_tuning
+
+    device = inputs.device
+    indices = [int(index) for index in indices]
+    batch_size = max(1, alns_tuning.BATCH_SIZE)
+
+    for start in range(0, len(indices), batch_size):
+        group = indices[start:start + batch_size]
+        rows = torch.as_tensor(group, device=device, dtype=torch.long)
+        originals = weights[rows, :].contiguous()
+
+        if config.use_gptq:
+            raise NotImplementedError(
+                "The batched path does not implement the GPTQ zero-point domain; "
+                "run with AMVM_BATCHED_ROWS=0 for GPTQ starting weights")
+        if config.use_squeezellm:
+            levels = torch.stack([config.squeezellm_LUT[index].to(device) for index in group])
+            initial = torch.stack([ut.round_to_nearest_pole_sim(originals[i], levels[i], device)
+                                   for i in range(len(group))]).long()
+        else:
+            minimum = originals.min(dim=1, keepdim=True).values
+            maximum = originals.max(dim=1, keepdim=True).values
+            steps = torch.arange(2 ** config.nQuantized, device=device, dtype=originals.dtype)
+            levels = minimum + steps[None, :] * (maximum - minimum) / (2 ** config.nQuantized - 1)
+            initial = torch.stack([FindNearest(originals[i], config.nQuantized, device)[1]
+                                   for i in range(len(group))]).long()
+
+        fixed_mask = None
+        if config.keep_outliers:
+            fixed_mask = originals.abs() >= config.outlier_range
+
+        B_k = (inputs @ originals.T).T.contiguous()
+        seconds = config.seconds * len(group)  # the group gets what its rows would have had
+        solution, objective = batched.solve(
+            inputs, initial, levels, B_k, seconds,
+            acceptance_policy=getattr(config, "acceptance_policy", "linf"),
+            fixed_mask=fixed_mask, seed=getattr(config, "seed", 9101) + group[0],
+            candidate_tile=alns_tuning.BATCH_CANDIDATE_TILE)
+
+        physical = torch.gather(levels, 1, solution)
+        if fixed_mask is not None:
+            physical = torch.where(fixed_mask, originals, physical)
+        print(f"Batched group of {len(group)} rows finished in {seconds}s, "
+              f"median objective {objective.median().item():.6f}")
+
+        if config.save_weights:
+            for position, index in enumerate(group):
+                path = f"./full_data_output/tmp/tmp_matrix{index}.h5"
+                try:
+                    os.remove(path)
+                except FileNotFoundError:
+                    pass
+                ut.save_tensors_to_hdf5({f"{index}": physical[position].cpu().numpy()}, path)
+
+
 def quantize_indices_concurrently(indices: list[int] | np.ndarray, INPUTS_ARRAY: list[torch.Tensor], WEIGHTS_ARRAY: list[torch.Tensor], config: Config):
-    """Takes in iterable indices and runs quantization algorithm on each row index specified"""
+    """Quantize the given row indices, by whichever path is configured.
+
+    This is the single entry point for quantizing a set of rows, so the retry and
+    fallback machinery around it does not have to know which path ran.
+    """
+    from ALNS import tuning as alns_tuning
+    if alns_tuning.BATCHED_ROWS:
+        print(f"Batched row solver enabled (batch size {alns_tuning.BATCH_SIZE})")
+        return quantize_indices_batched(indices, INPUTS_ARRAY[0], WEIGHTS_ARRAY[0], config)
+    return quantize_indices_with_workers(indices, INPUTS_ARRAY, WEIGHTS_ARRAY, config)
+
+
+def quantize_indices_with_workers(indices: list[int] | np.ndarray, INPUTS_ARRAY: list[torch.Tensor], WEIGHTS_ARRAY: list[torch.Tensor], config: Config):
+    """Run one worker per row, fanned out over the available devices."""
     TOTAL_ITERATIONS = len(indices)
     # EXPLICITLY CREATING PROCESSES ------------------------------------------
     LOOP_ITERATIONS = math.ceil(TOTAL_ITERATIONS / config.rows_per_gpu / config.num_gpu)
@@ -274,7 +351,8 @@ def quantize_matrix(config: Config) -> np.ndarray:
     print(f"using {config.rows_per_gpu} rows per gpu")
     if incomplete_row_indices != []:
         print(f"Incomplete row indices is not empty, it has size {len(incomplete_row_indices)}")
-        quantize_indices_concurrently(incomplete_row_indices, INPUTS_ARRAY, WEIGHTS_ARRAY, config)
+        quantize_indices_concurrently(incomplete_row_indices, INPUTS_ARRAY, WEIGHTS_ARRAY,
+                                      config)
     # TODO: put this in function instead of reusing code
     for incomplete_row_index in incomplete_row_indices:
         print(f"Retrying incomplete row index {incomplete_row_index}")

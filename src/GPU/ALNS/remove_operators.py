@@ -69,8 +69,10 @@ def worst_remove(state: State, rnd_state: np.random.RandomState) -> State:
     remove_operator_debug(state)
     operator_debug(state, worst_remove)
 
-    removed_array = np.zeros(len(state.weights), dtype=bool)
-    #removed_array = torch.zeros(len(state.weights), dtype=bool)
+    # Keep the mask on the device and in the same type the other remove operator
+    # produces, so consumers never have to handle two container types.
+    removed_array = torch.zeros(len(state.weights), dtype=torch.bool,
+                                device=state.torch_device)
 
     # L_set is a tuple: (tensor of signed D_k values, tensor of row_index values)
     D_ks = state.L_set[0]
@@ -131,12 +133,11 @@ def worst_remove(state: State, rnd_state: np.random.RandomState) -> State:
     #amount_to_destroy = int(len(state.weights) * DESTROY_RATE)
     amount_to_destroy = min(int((~state.fixed_mask).sum()),
                             max(1, math.ceil(int((~state.fixed_mask).sum()) * DESTROY_RATE)))
-    removed_idx_tensor = torch.multinomial(score_tensor, amount_to_destroy, replacement=False,
-                                           generator=state.torch_generator)
-    removed_indices = removed_idx_tensor.cpu().numpy()
+    removed_indices = torch.multinomial(score_tensor, amount_to_destroy, replacement=False,
+                                        generator=state.torch_generator)
 
     removed_array[removed_indices] = True
-    removed_array[state.fixed_mask.cpu().numpy()] = False
+    removed_array[state.fixed_mask] = False
 
     # Debugging output
     #if state.debug:

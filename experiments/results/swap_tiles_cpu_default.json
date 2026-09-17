@@ -1,0 +1,20 @@
+{
+  "best": [
+    10.814997673034668,
+    2049.261474609375,
+    211,
+    981
+  ],
+  "dense_filter_tensor_bytes": 33554432,
+  "dense_median_seconds": 0.026634500129148364,
+  "device": "cpu",
+  "filter_tensor_reduction": 4.0,
+  "shape": {
+    "group_size": 512,
+    "rows": 128,
+    "screen_rows": 32
+  },
+  "speed_ratio_dense_over_tiled": 0.3941346068777803,
+  "tiled_filter_tensor_bytes_upper_bound": 8388608,
+  "tiled_median_seconds": 0.06757716694846749
+}
