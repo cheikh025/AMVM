@@ -60,6 +60,30 @@ needs.
 **Baseline speed (median ms per iteration):** q_proj 288, fc1 213, fc2 2850
 **Baseline quality (median final infinity norm):** q_proj 0.6241, fc1 0.0616, fc2 0.0443
 
+## Measurement correction, 2026-09-17
+
+Entries 3 to 9 were measured in blocks: one variant run to completion, then the
+next. The blocks spanned several hours during which the machine ran on battery
+and the charge fell, and battery and wall power use different performance modes
+here. Re-measured by alternating the builds within each repetition, the
+end-to-end stack of entries 3 to 6 is 1.87x (q_proj), 2.03x (fc1) and 1.62x
+(fc2), against 1.99x, 2.03x and 1.76x reported. Read the headline as 1.6x to 2.0x.
+
+Power state itself was not the cause: the same configuration on battery and on
+wall power differs by under 7%, in both directions, and low power mode was off.
+The block design simply could not cancel drift of any kind, and the drift fell
+in the flattering direction on two layers out of three.
+
+The equal-time quality results are not corrected and their direction is safe:
+variants ran in ladder order while the battery drained, so drift handicapped the
+later variants, which are the ones that won.
+
+Unaffected, because they do not depend on timing: the trajectory equivalence
+results, the whole test suite, and the structural audit of solved rows.
+
+**Rule going forward:** no timing claim from block measurement. Use
+`experiments/ab_interleaved.sh`, and record the power source per repetition.
+
 ## Running summary
 
 | # | Date | Title | Layer | Decision | Correctness | Memory | Runtime |
