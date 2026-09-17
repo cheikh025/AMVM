@@ -5,8 +5,6 @@ return exactly what the per-element code returned. The settled-state skip must
 only ever skip a pass that would have found nothing, which is the property that
 makes skipping it safe.
 """
-import copy
-
 import numpy as np
 import pytest
 import torch
@@ -15,6 +13,17 @@ from ALNS import tuning
 from ALNS.local_search import LocalSearch, run_local_search
 from ALNS.remove_operators import create_copied_state
 from ALNS.repair_operators import current_levels_of, repairable_indices
+
+
+def copy_of(state):
+    """Copy a state the way the solver copies one, destroying nothing.
+
+    ``copy.deepcopy`` cannot be used: a state owns a ``torch.Generator``, which is
+    unpicklable on the PyTorch version continuous integration pins. The solver's
+    own copy already handles the generator explicitly, so using it here also keeps
+    the test faithful to what a destroy move actually produces.
+    """
+    return create_copied_state(state, torch.zeros_like(state.removed_array))
 
 
 @pytest.fixture
@@ -66,11 +75,11 @@ def test_local_search_on_a_settled_state_finds_nothing(settled_state):
 
 
 def test_skip_returns_the_same_point_as_running_the_pass(settled_state, monkeypatch):
-    ran = copy.deepcopy(settled_state)
+    ran = copy_of(settled_state)
     monkeypatch.setattr(tuning, "SKIP_SETTLED_LOCAL_SEARCH", False)
     run_local_search(ran)
 
-    skipped = copy.deepcopy(settled_state)
+    skipped = copy_of(settled_state)
     monkeypatch.setattr(tuning, "SKIP_SETTLED_LOCAL_SEARCH", True)
     run_local_search(skipped)
 
