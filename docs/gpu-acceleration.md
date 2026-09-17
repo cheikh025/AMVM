@@ -24,9 +24,10 @@ production sample count.
 Reproduce the inputs with `experiments/capture_real_instances.py`; the files are
 not checked in. Run a variant with `experiments/run_protocol.sh <label>`, and
 read the tables with `experiments/summarize_results.py`. For a timing claim, use
-`experiments/ab_interleaved.sh`, which alternates the two builds instead of
-running each in a block; see the correction under "Changes and what each one
-bought" for why that matters.
+`experiments/run_interleaved.sh`, which measures several variants in one process
+with the solves interleaved instead of blocked, at no extra cost and in the same
+output layout; see the correction under "Changes and what each one bought" for why
+that matters.
 
 ## What the profile found
 
@@ -85,7 +86,13 @@ Power state itself turned out to matter little: the same configuration measured
 on battery and on wall power differs by under 7%, in both directions, and low
 power mode was off throughout. What the block design could not cancel was drift
 of any kind, and the drift happened to fall in the flattering direction twice.
-Use `experiments/ab_interleaved.sh` for any future timing claim.
+
+The fix costs nothing. `experiments/run_interleaved.sh` takes several variants and
+runs the same solves the old protocol did, reordered so every (row, seed) point is
+measured for all variants back to back; drift then hits all of them equally. It is
+cheaper than running each variant separately, because one process covers every
+variant instead of one process per variant. Use `experiments/ab_interleaved.sh`
+only when the two sides are different commits, which flags cannot express.
 
 - **A2** replaces per-element reads of device tensors with one transfer. The
   removed-index list cost 113 ms per call at M=768 and 1 ms after the change.

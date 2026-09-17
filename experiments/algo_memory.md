@@ -82,7 +82,10 @@ Unaffected, because they do not depend on timing: the trajectory equivalence
 results, the whole test suite, and the structural audit of solved rows.
 
 **Rule going forward:** no timing claim from block measurement. Use
-`experiments/ab_interleaved.sh`, and record the power source per repetition.
+`experiments/run_interleaved.sh`, which measures several variants in one process
+with the solves interleaved. This is not extra work: it runs exactly the solves
+the old protocol ran, reordered, in fewer processes. `experiments/ab_interleaved.sh`
+remains for the one case flags cannot express, comparing different commits.
 
 ## Running summary
 
