@@ -75,9 +75,10 @@ def prune_slack(bound):
     """
     return bound + bound.abs() * 1e-6 + 1e-12
 
-# A7: evaluate the L2 term from the Gram matrix instead of accumulating squares
-# over every residual row.
-GRAM_L2 = _flag("AMVM_GRAM_L2", False)
+# A7, the Gram-matrix L2, has no flag on purpose. It was measured and not
+# implemented: the squares accumulation it would replace is about 10% of the
+# exact stage. A flag here would advertise a path that does not exist and would
+# put a meaningless field in every run manifest. See docs/gpu-acceleration.md.
 
 # B: run rows of a matrix in one batched tensor program instead of one Python
 # loop per row.
@@ -141,7 +142,6 @@ def describe(device: torch.device = None) -> dict:
         "prune_to_incumbent": PRUNE_TO_INCUMBENT,
         "prune_first_stage": PRUNE_FIRST_STAGE,
         "prune_stage_growth": PRUNE_STAGE_GROWTH,
-        "gram_l2": GRAM_L2,
         "batched_rows": BATCHED_ROWS,
         "batch_size": BATCH_SIZE,
         "batch_candidate_tile": BATCH_CANDIDATE_TILE,
