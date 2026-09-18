@@ -147,3 +147,68 @@ def test_nonuniform_per_instance_domains_match(device):
         assert_same_point(old, new, "with per-instance domains")
         batched.destroy_and_repair(old, active_old, destroy_rate=0.005)
         mv_engine.perturb(new, active_new, destroy_rate=0.005)
+
+
+class TestAdapter:
+    """The adapter that lets the quantization path run on minviol."""
+
+    @staticmethod
+    def args(device, seed=31):
+        inputs, weights, levels, B_k = instance(device, seed=seed)
+        return inputs, weights, levels, B_k
+
+    @pytest.mark.parametrize("policy", POLICIES)
+    def test_adapter_returns_what_the_original_returns(self, device, policy):
+        from ALNS import minviol_engine
+
+        inputs, weights, levels, B_k = self.args(device)
+        solution, objective = minviol_engine.solve(
+            inputs, weights, levels, B_k, seconds=0.2, acceptance_policy=policy)
+
+        assert solution.shape == weights.shape
+        assert int(solution.min()) >= 0 and int(solution.max()) < levels.shape[1]
+        for row in range(weights.shape[0]):
+            direct = inputs @ levels[row][solution[row]] - B_k[row]
+            assert objective[row].item() == pytest.approx(direct.abs().max().item(),
+                                                          abs=1e-4)
+
+    def test_adapter_never_returns_a_point_worse_than_its_start(self, device):
+        from ALNS import minviol_engine
+
+        inputs, weights, levels, B_k = self.args(device, seed=37)
+        start = batched.BatchedRows(inputs, weights, levels, B_k).objective.clone()
+        _, objective = minviol_engine.solve(inputs, weights, levels, B_k, seconds=0.2)
+        assert torch.all(objective <= start + 1e-5)
+
+    def test_adapter_leaves_fixed_variables_untouched(self, device):
+        from ALNS import minviol_engine
+
+        inputs, weights, levels, B_k = self.args(device, seed=41)
+        fixed = torch.zeros_like(weights, dtype=torch.bool)
+        fixed[:, ::3] = True
+        solution, _ = minviol_engine.solve(inputs, weights, levels, B_k, seconds=0.2,
+                                           fixed_mask=fixed)
+        assert torch.equal(solution[fixed], weights[fixed])
+
+    def test_the_dispatcher_reaches_the_minviol_engine_when_the_flag_is_set(self,
+                                                                           monkeypatch):
+        """The flag has to change which engine runs, not just which one is imported."""
+        import full_layer
+        from ALNS import minviol_engine, tuning as alns_tuning
+
+        seen = {}
+
+        def record(inputs, weights, levels, B_k, seconds, **kwargs):
+            seen["called"] = True
+            return torch.zeros_like(weights), torch.zeros(weights.shape[0])
+
+        monkeypatch.setattr(alns_tuning, "MINVIOL_ENGINE", True)
+        monkeypatch.setattr(minviol_engine, "solve", record)
+        inputs, weights, levels, B_k = self.args(torch.device("cpu"))
+
+        config = type("Config", (), dict(
+            use_gptq=False, use_squeezellm=False, keep_outliers=False, nQuantized=2,
+            seconds=0.01, save_weights=False, acceptance_policy="linf", seed=1))()
+        full_layer.quantize_indices_batched([0, 1], inputs, weights.float(), config)
+
+        assert seen.get("called"), "the flag did not route to the minviol engine"

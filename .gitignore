@@ -39,5 +39,9 @@ experiments/data/
 # so they are tracked despite the blanket *.json rule above.
 !experiments/results/**/*.json
 
+# Same reason: the density table in the minviol README cites these numbers, and a
+# cited measurement that is not in the repository cannot be checked.
+!packages/minviol/benchmarks/**/*.json
+
 # Editable-install metadata for packages/minviol
 packages/minviol/src/*.egg-info/
