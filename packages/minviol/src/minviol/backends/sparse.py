@@ -108,6 +108,22 @@ class SparseMatrix:
         out[rows, cand] = vals
         return out
 
+    def apply_delta(self, y, instances, left, right, delta):
+        """Add each instance's move to its column of ``y``, touching only its support.
+
+        Densifying the column first would put an ``O(constraints)`` allocation on
+        every accepted move, which on a sparse matrix is the cost the whole
+        backend exists to avoid -- and it would be paid once per move rather than
+        once per pass.
+        """
+        move, rows, accumulated = self._column_difference(left, right)
+        if not len(move):
+            return
+        # The column difference is assembled before scaling, so a constraint
+        # touched by both halves of a swap gets one combined value and the
+        # arithmetic is grouped exactly as the candidate's score was.
+        y.index_put_((rows, instances[move]), delta[move] * accumulated, accumulate=True)
+
     def dense_rows(self, rows):
         out = torch.zeros(len(rows), self.shape[1], device=self.device, dtype=self.dtype)
         position = torch.full((self.shape[0],), -1, dtype=torch.long, device=self.device)
@@ -136,15 +152,54 @@ class SparseMatrix:
         flat = self.col_ptr[cols][owner] + within
         return owner, self.row_idx[flat], self.values[flat]
 
-    def contains(self, cols, rows):
-        """Elementwise test of whether ``A[rows, cols]`` is stored.
+    def lookup(self, cols, rows):
+        """Locate ``A[rows, cols]``: ``(found, position)`` into the stored entries.
 
         A binary search into the globally sorted column-major key, so the whole
-        test is two vectorized ops regardless of how ragged the columns are.
+        test is a couple of vectorized ops regardless of how ragged the columns
+        are, and needs no dense row slab.
         """
-        key = cols * self.shape[0] + rows
-        position = torch.searchsorted(self.key, key.reshape(-1)).clamp_max(len(self.key) - 1)
-        return (self.key[position] == key.reshape(-1)).reshape(key.shape)
+        key = (cols * self.shape[0] + rows).reshape(-1)
+        position = torch.searchsorted(self.key, key).clamp_max(max(0, len(self.key) - 1))
+        found = self.key[position] == key
+        return found.reshape(cols.shape), position.reshape(cols.shape)
+
+    def contains(self, cols, rows):
+        """Elementwise test of whether ``A[rows, cols]`` is stored."""
+        return self.lookup(cols, rows)[0]
+
+    def _column_difference(self, left, right):
+        """Union of the two columns' supports, as ``(owner, constraint, value)``.
+
+        For a swap the value is ``A[i, left] - A[i, right]``, with a missing entry
+        read as zero. Each ``(owner, constraint)`` appears exactly once by
+        construction: the left column contributes all of its own entries, already
+        carrying the subtraction where the right column overlaps, and the right
+        column contributes only what the left one does not have.
+
+        Built this way rather than by concatenating both columns and merging with
+        ``torch.unique``. That merge sorts millions of keys for what is really two
+        binary searches, and the sort was measured to cost the swap pass more than
+        the sparsity saved it.
+        """
+        owner, rows, values = self._gather_columns(left)
+        if right is None:
+            return owner, rows, values
+
+        overlap, position = self.lookup(right[owner], rows)
+        # a - b, not a + (-b) grouped through an accumulator: both are the same
+        # IEEE operation, and this one needs no accumulator at all.
+        values = values - torch.where(overlap, self.values[position],
+                                      torch.zeros_like(values))
+
+        owner_r, rows_r, values_r = self._gather_columns(right)
+        if len(owner_r):
+            already, _ = self.lookup(left[owner_r], rows_r)
+            fresh = ~already
+            owner = torch.cat([owner, owner_r[fresh]])
+            rows = torch.cat([rows, rows_r[fresh]])
+            values = torch.cat([values, -values_r[fresh]])
+        return owner, rows, values
 
     # -- candidate scoring -------------------------------------------------
 
@@ -157,15 +212,48 @@ class SparseMatrix:
         """
         return torch.ones(len(tag), dtype=torch.bool, device=self.device)
 
+    def _chunk_bounds(self, left, right, options):
+        """Split the candidate list so each chunk's flat gather fits the budget.
+
+        Chunking by candidate count is not enough: what a candidate costs is its
+        column's support, and a wide column can be thousands of entries. On a 5%
+        dense matrix one block of 3,500 swap candidates expands to 17 million
+        entries, which is where the intermediates stop fitting anywhere sensible.
+        The split therefore follows the cumulative entry count, not the index.
+        """
+        counts = self.col_ptr[left + 1] - self.col_ptr[left]
+        if right is not None:
+            counts = counts + (self.col_ptr[right + 1] - self.col_ptr[right])
+        # Entries carry an index, a value, a key and an accumulator, plus what
+        # torch.unique needs to sort them.
+        per_entry = 8 + 4 * 4
+        budget = max(1, options.memory_budget_mb * 1024 * 1024 // per_entry)
+        running = torch.cumsum(counts, 0)
+
+        bounds, start = [], 0
+        total = int(running[-1].item())
+        while start < len(left):
+            consumed = 0 if start == 0 else int(running[start - 1].item())
+            if total - consumed <= budget:
+                bounds.append((start, len(left)))
+                break
+            stop = int(torch.searchsorted(running, consumed + budget).item())
+            stop = min(max(stop, start + 1), len(left))   # always make progress
+            bounds.append((start, stop))
+            start = stop
+        return bounds
+
     def exact_scores(self, batch, tag, left, right, delta, prune_bound, screen_rows,
                      options, counters):
         """Exact maximum violation and sum of squares per candidate."""
         n_candidates = len(tag)
         maxima = torch.empty(n_candidates, dtype=self.dtype, device=self.device)
         squares = torch.empty_like(maxima)
-        tile = max(1, options.candidate_tile)
-        for start in range(0, n_candidates, tile):
-            piece = slice(start, start + tile)
+        if not n_candidates:
+            return maxima, squares
+        for start, stop in self._chunk_bounds(left, right, options):
+            piece = slice(start, stop)
+            counters.bump("sparse_chunks")
             maxima[piece], squares[piece] = self._score_block(
                 batch, tag[piece], left[piece],
                 None if right is None else right[piece], delta[piece],
@@ -195,30 +283,14 @@ class SparseMatrix:
     def _touched(self, batch, tag, left, right, delta, counters):
         """Maximum violation over the touched constraints, and the change in L2."""
         n_candidates = len(tag)
-        owner, rows, column = self._gather_columns(left)
-        if right is not None:
-            owner_r, rows_r, vals_r = self._gather_columns(right)
-            owner = torch.cat([owner, owner_r])
-            rows = torch.cat([rows, rows_r])
-            column = torch.cat([column, -vals_r])
-
-        if not len(owner):
+        cand, row, accumulated = self._column_difference(left, right)
+        if not len(cand):
             return (torch.full((n_candidates,), NEG_INF, dtype=self.dtype,
                                device=self.device),
                     torch.zeros(n_candidates, dtype=self.dtype, device=self.device))
 
-        # A constraint touched by both columns of a swap appears twice, with one
-        # column entry each. Summing per (candidate, constraint) before evaluating
-        # is what keeps the two halves from being scored as separate moves.
-        key = owner * self.shape[0] + rows
-        unique_key, inverse = torch.unique(key, return_inverse=True)
-        accumulated = torch.zeros(len(unique_key), dtype=self.dtype, device=self.device)
-        accumulated.scatter_add_(0, inverse, column)
-
-        cand = unique_key // self.shape[0]
-        row = unique_key % self.shape[0]
         instance = tag[cand]
-        counters.bump("constraint_candidate_products", len(unique_key))
+        counters.bump("constraint_candidate_products", len(cand))
 
         # The step multiplies the assembled column difference, not each half
         # separately. That is the grouping the dense backend uses, and an

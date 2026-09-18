@@ -248,6 +248,9 @@ def local_search(batch, active, options, counters, deadline=None, max_passes=100
     assigned levels, so from a point with the wrong level histogram no sequence
     of swaps can reach a better one.
     """
+    if not (options.single_variable_moves or options.swap_moves):
+        raise ValueError("no move class is enabled; set single_variable_moves or "
+                         "swap_moves")
     n_filters = options.n_filters or 100
     working = active.clone()
     for _ in range(max_passes):
@@ -258,7 +261,8 @@ def local_search(batch, active, options, counters, deadline=None, max_passes=100
         if options.single_variable_moves:
             improved |= move_pass(batch, working, rows, options, counters)
             rows = screening_rows(batch, n_filters)
-        improved |= swap_pass(batch, working, rows, options, counters)
+        if options.swap_moves:
+            improved |= swap_pass(batch, working, rows, options, counters)
         counters.bump("passes")
         working = working & improved
         if not bool(working.any()):

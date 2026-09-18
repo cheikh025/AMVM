@@ -125,3 +125,52 @@ def test_a_zero_column_variable_cannot_change_anything():
                            x0=torch.tensor([0, 0]), budget=Budget(seconds=0.5))
     assert result.feasible
     assert float(result.x[0]) == 2.0
+
+
+def test_feasibility_tolerance_is_reachable_by_the_dtype():
+    """A threshold the arithmetic cannot reach would never report success.
+
+    Computing A x over m terms accumulates about sqrt(m)*eps of relative error,
+    so on a large float32 system a fixed 1e-9 threshold is below what the dtype
+    can deliver -- the solver would find the answer and then refuse to say so.
+    """
+    from minviol import Budget
+
+    derived = Budget().resolve_feasibility_tol(torch.float32, scale=100.0,
+                                               n_constraints=100_000)
+    assert 1e-4 < derived < 1e-1, derived
+
+    # float64 keeps its precision rather than inheriting float32's allowance.
+    precise = Budget().resolve_feasibility_tol(torch.float64, scale=100.0,
+                                               n_constraints=100_000)
+    assert precise < derived / 1e6
+
+    # Small problems get a tight threshold, not the large-problem allowance.
+    small = Budget().resolve_feasibility_tol(torch.float32, scale=1.0, n_constraints=10)
+    assert small < 1e-6
+
+    # An explicit value is always honoured.
+    assert Budget(feasibility_tol=1e-3).resolve_feasibility_tol(
+        torch.float32, scale=1e9, n_constraints=10**9) == 1e-3
+
+
+def test_a_float32_system_that_is_solved_is_reported_as_solved():
+    """The regression: sparse and dense matvecs differ by float32 noise.
+
+    A point that satisfies every constraint to within the arithmetic's own
+    resolution has to count as feasible, or the sparse backend can never report
+    success on a problem the dense one solves exactly.
+    """
+    torch.manual_seed(0)
+    A = torch.randn(20_000, 64)
+    A[torch.rand_like(A) > 0.02] = 0
+    domain = torch.arange(4.0)
+    planted = domain[torch.randint(0, 4, (64,))]
+    target = A @ planted
+
+    result = minviol.solve(A.to_sparse_coo(), target, target, domain=domain,
+                           init="given", x0=(planted.long()),
+                           budget=Budget(seconds=0.5))
+    assert result.feasible, (
+        f"the planted point itself was not reported feasible; violation "
+        f"{result.max_violation:.3e}")

@@ -31,6 +31,13 @@ class DenseMatrix:
         """``A[:, cols]`` as ``(constraints, len(cols))``."""
         return self.A[:, cols]
 
+    def apply_delta(self, y, instances, left, right, delta):
+        """Add each instance's move to its column of ``y``, in place."""
+        column = self.A[:, left]
+        if right is not None:
+            column = column - self.A[:, right]
+        y[:, instances] += delta[None, :] * column
+
     # -- candidate scoring -------------------------------------------------
 
     def _candidate_y(self, base_y, delta_sel, left_sel, right_sel, row_index):

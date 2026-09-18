@@ -147,7 +147,8 @@ def solve_batch(A, lower=None, upper=None, *, domain, init="lstsq_round", x0=Non
 
     if x0 is not None:
         x0 = torch.as_tensor(x0, device=device).reshape(n_instances, n_variables)
-    x_idx = initialize.build(init, matrix, lower_t, upper_t, domain_t, n_variables, x0)
+    x_idx = initialize.build(init, matrix, lower_t, upper_t, domain_t, n_variables, x0,
+                             budget_mb=options.memory_budget_mb)
     if x_idx.shape != (n_instances, n_variables):
         raise ValueError(f"starting point has shape {tuple(x_idx.shape)}, expected "
                          f"({n_instances}, {n_variables})")
@@ -166,8 +167,15 @@ def solve_batch(A, lower=None, upper=None, *, domain, init="lstsq_round", x0=Non
     batch = Batch(matrix, x_idx, domain_t, lower_t, upper_t, row_scale=scale_t,
                   fixed_mask=fixed_t, acceptance=options.acceptance, seed=options.seed)
 
+    finite = torch.isfinite(lower_t)
+    scale = float(lower_t[finite].abs().max()) if bool(finite.any()) else 0.0
+    finite_upper = torch.isfinite(upper_t)
+    if bool(finite_upper.any()):
+        scale = max(scale, float(upper_t[finite_upper].abs().max()))
+    feasibility_tol = budget.resolve_feasibility_tol(dtype, scale, n_constraints)
+
     started = time.time()
-    iterations = _run(batch, budget, options, counters, started)
+    iterations = _run(batch, budget, options, counters, started, feasibility_tol)
     elapsed = time.time() - started
 
     batch.x_idx = batch.best_x_idx.clone()
@@ -179,12 +187,12 @@ def solve_batch(A, lower=None, upper=None, *, domain, init="lstsq_round", x0=Non
     return [Result(x=physical[r], x_index=batch.x_idx[r],
                    max_violation=float(max_violation[r]),
                    objective=float(batch.objective[r]),
-                   feasible=bool(max_violation[r] <= budget.feasibility_tol),
+                   feasible=bool(max_violation[r] <= feasibility_tol),
                    wall_time=elapsed, iterations=iterations, counters=snapshot)
             for r in range(n_instances)]
 
 
-def _run(batch, budget, options, counters, started):
+def _run(batch, budget, options, counters, started, feasibility_tol):
     """Perturb, descend, keep the best per instance, until the budget runs out."""
     device = batch.device
     active = torch.ones(batch.n_instances, dtype=torch.bool, device=device)
@@ -196,7 +204,7 @@ def _run(batch, budget, options, counters, started):
         batch.best_x_idx[better] = batch.x_idx[better]
         batch.best_objective = torch.where(better, batch.objective, batch.best_objective)
         if budget.stop_when_feasible:
-            done = batch.max_violation() <= budget.feasibility_tol
+            done = batch.max_violation() <= feasibility_tol
             if bool(done.any()):
                 # A feasible point answers the question this solver was asked.
                 # Freezing rather than breaking lets the rest of the batch run on.

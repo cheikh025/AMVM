@@ -108,16 +108,13 @@ class Batch:
         # of them improve.
         delta = (self.domain[instances, q_left]
                  - self.domain[instances, self.x_idx[instances, left]])
-        column = self.matrix.columns(left)
-        if right is not None:
-            # A swap moves the two variables by equal and opposite steps, so one
-            # delta covers both. This is also the expression the candidate was
-            # scored with: applying an algebraically equal but differently
-            # grouped one would leave the realized objective a unit in the last
-            # place away from the predicted one, on every accepted move.
-            column = column - self.matrix.columns(right)
-
-        self.y[:, instances] += delta[None, :] * column
+        # A swap moves the two variables by equal and opposite steps, so one delta
+        # covers both, and the backend assembles the column difference before
+        # scaling it. That is the expression the candidate was scored with:
+        # applying an algebraically equal but differently grouped one would leave
+        # the realized objective a unit in the last place away from the predicted
+        # one, on every accepted move.
+        self.matrix.apply_delta(self.y, instances, left, right, delta)
         self.x_idx[instances, left] = q_left
         if right is not None:
             self.x_idx[instances, right] = q_right

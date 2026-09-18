@@ -123,3 +123,48 @@ def test_move_pass_reaches_a_level_that_is_not_a_neighbour():
 
     assert int(batch.x_idx[0, 0]) == 3
     assert float(batch.objective) == pytest.approx(0.0, abs=1e-6)
+
+
+def test_swaps_can_be_turned_off_independently():
+    """A general constraint system does better without them; the knob must work."""
+    A, domain, _, target = binary_instance(n_constraints=400, n_variables=32, seed=7)
+    x0 = torch.zeros(1, A.shape[1], dtype=torch.long)
+    bounds = target[:, None]
+
+    batch = Batch(DenseMatrix(A), x0, domain[None, :], bounds, bounds)
+    before = float(batch.objective)
+    engine.local_search(batch, torch.ones(1, dtype=torch.bool),
+                        Opt(swap_moves=False, prune_min_constraints=0), Counters())
+    assert float(batch.objective) < before, "the single-variable pass did not run"
+
+
+def test_a_search_with_no_move_class_is_refused():
+    """Silently doing nothing for the whole budget would be the worst answer."""
+    A, domain, _, target = binary_instance(n_constraints=100, n_variables=8, seed=11)
+    x0 = torch.zeros(1, A.shape[1], dtype=torch.long)
+    bounds = target[:, None]
+    batch = Batch(DenseMatrix(A), x0, domain[None, :], bounds, bounds)
+
+    with pytest.raises(ValueError, match="no move class is enabled"):
+        engine.local_search(batch, torch.ones(1, dtype=torch.bool),
+                            Opt(single_variable_moves=False, swap_moves=False),
+                            Counters())
+
+
+def test_swaps_alone_still_work_where_they_suit_the_problem():
+    """Turning moves off must leave a working swap search, not a broken one.
+
+    This is the configuration the quantization engine runs, so it has to keep
+    descending from a point whose level histogram is already varied.
+    """
+    A, domain, _, target = binary_instance(n_constraints=400, n_variables=32, seed=13)
+    g = torch.Generator().manual_seed(3)
+    x0 = torch.randint(0, 2, (1, A.shape[1]), generator=g)
+    bounds = target[:, None]
+
+    batch = Batch(DenseMatrix(A), x0, domain[None, :], bounds, bounds)
+    before = float(batch.objective)
+    engine.local_search(batch, torch.ones(1, dtype=torch.bool),
+                        Opt(single_variable_moves=False, prune_min_constraints=0),
+                        Counters())
+    assert float(batch.objective) <= before

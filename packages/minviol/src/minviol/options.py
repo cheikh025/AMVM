@@ -9,6 +9,8 @@ a frozen dataclass instead, passed per solve.
 
 from dataclasses import dataclass, field
 
+import torch
+
 # Number of live intermediates of the exact-evaluation loop (residuals, their
 # violations, and their squares), used when sizing a row tile.
 LIVE_INTERMEDIATES = 3
@@ -28,8 +30,27 @@ class Budget:
 
     seconds: float = 10.0
     stop_when_feasible: bool = True
-    feasibility_tol: float = 1e-9
+    feasibility_tol: float | None = None
     max_iterations: int | None = None
+
+    def resolve_feasibility_tol(self, dtype, scale, n_constraints) -> float:
+        """The violation below which a point counts as satisfying the constraints.
+
+        Left unset it is derived, because a fixed small number is the wrong answer
+        in float32. Computing ``A x`` over m terms accumulates roughly
+        ``sqrt(m) * eps`` of relative error, so on 100,000 float32 constraints
+        with bounds of order 100 the arithmetic simply cannot deliver a residual
+        below about 4e-3 -- and a solver that never reports success because its
+        own dtype cannot reach its own threshold is worse than useless. The same
+        formula on float64 gives about 7e-12, so precision is not thrown away
+        where it exists.
+
+        Pass a number to say exactly what your problem counts as satisfied.
+        """
+        if self.feasibility_tol is not None:
+            return float(self.feasibility_tol)
+        eps = torch.finfo(dtype).eps
+        return float(max(1.0, float(scale)) * eps * max(1.0, n_constraints ** 0.5))
 
 
 @dataclass(frozen=True)
@@ -62,6 +83,13 @@ class Options:
     # whose level histogram is wrong -- which is exactly the cold start. Off only
     # to reproduce the swap-only engine this was lifted from.
     single_variable_moves: bool = True
+
+    # Run the swap descent, which exchanges the levels of two variables. It is a
+    # strong move where the level histogram is roughly right to begin with, which
+    # is the quantization case. It is also the expensive move for a sparse matrix,
+    # since each candidate touches two columns and the pass is bound by kernel
+    # launches rather than by arithmetic -- see docs/sparse-design.md.
+    swap_moves: bool = True
 
     # Candidate block of the exact stage: constraints x tile floats.
     candidate_tile: int = 4096

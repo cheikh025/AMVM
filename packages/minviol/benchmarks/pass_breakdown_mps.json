@@ -1,0 +1,53 @@
+{
+  "device": "mps",
+  "records": [
+    {
+      "constraints": 100000,
+      "variables": 256,
+      "density": 0.002,
+      "max_nnz": 244,
+      "screening_set": 245,
+      "move_dense_ms": 23.15105200977996,
+      "move_sparse_ms": 5.3469687118195,
+      "move_speedup": 4.329752661279736,
+      "swap_dense_ms": 34.69594771740958,
+      "swap_sparse_ms": 57.60304175782949,
+      "swap_speedup": 0.6023283954912617,
+      "passes_dense_ms": 66.68097927467898,
+      "passes_sparse_ms": 77.02775002690032,
+      "passes_speedup": 0.86567476333389
+    },
+    {
+      "constraints": 100000,
+      "variables": 256,
+      "density": 0.01,
+      "max_nnz": 1077,
+      "screening_set": 1078,
+      "move_dense_ms": 12.469218752812594,
+      "move_sparse_ms": 7.650583458598703,
+      "move_speedup": 1.629838929316965,
+      "swap_dense_ms": 34.13045825436711,
+      "swap_sparse_ms": 152.52223948482424,
+      "swap_speedup": 0.22377365012243378,
+      "passes_dense_ms": 84.64152074884623,
+      "passes_sparse_ms": 149.23671877477318,
+      "passes_speedup": 0.5671628366245878
+    },
+    {
+      "constraints": 100000,
+      "variables": 256,
+      "density": 0.05,
+      "max_nnz": 5186,
+      "screening_set": 5187,
+      "move_dense_ms": 28.77113554859534,
+      "move_sparse_ms": 22.105875017587095,
+      "move_speedup": 1.3015153449345689,
+      "swap_dense_ms": 72.85826024599373,
+      "swap_sparse_ms": 734.5947397989221,
+      "swap_speedup": 0.09918157086986078,
+      "passes_dense_ms": 209.61729169357568,
+      "passes_sparse_ms": 660.3152395109646,
+      "passes_speedup": 0.3174503315247125
+    }
+  ]
+}

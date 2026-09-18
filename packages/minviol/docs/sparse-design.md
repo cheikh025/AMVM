@@ -159,6 +159,39 @@ Crossover is around 10-15% density, and the win grows with the constraint count.
 Sparse is also a bad bet for heavy-tailed columns, where one wide column
 serializes a segment the rest of the batch waits on.
 
+### How little of that survives a whole pass
+
+The table above times candidate scoring in isolation. A pass also screens,
+refreshes caches, recomputes the top-K and applies a move, and those are `O(m)`
+whatever the backend. Measured per pass at 100,000 constraints and 256 variables:
+
+| Density | Single-variable pass | Swap pass | Three full passes |
+|---:|---:|---:|---:|
+| 0.2% | 4.3x | 0.65x | 0.89x |
+| 1% | 1.8x | 0.22x | 0.56x |
+| 5% | 1.4x | 0.09x | 0.31x |
+
+**The single-variable pass is a real win; the swap pass is a loss, and it is large
+enough to sink the total.** Profiling one swap pass at 0.2% density, 4,130
+candidates and K=245: `_untouched_max` 3.3 ms, `_touched` 8.6 ms, of which
+`_column_difference` is 5.1 ms and a bare `_gather_columns` is 1.2 ms. The actual
+arithmetic is 4,130 x 200 = 826k entries. At roughly a millisecond per operation on
+work that small, the pass is bound by kernel launches, not by arithmetic -- so
+reading fewer constraints cannot help it.
+
+Two things were tried and did not fix it. Replacing the `torch.unique` merge with
+two binary searches (the `_column_difference` above) removed a sort over millions
+of keys and made the swap pass slightly *worse*, which is what says the sort was
+not the cost. Making `apply_delta` touch only the support, instead of densifying a
+column per accepted move, changed the total by less than the noise.
+
+What would fix it is fewer, larger kernels: one candidate list across all level
+pairs rather than one per pair, and the two gathers and two lookups of
+`_column_difference` fused. Until then, `Options.swap_moves=False` is the honest
+recommendation for a sparse problem -- the single-variable neighbourhood is the
+natural one for a general constraint system anyway, and swaps are a specialized
+2-opt that suits quantization.
+
 ## Not done
 
 - **Incremental top-`K`.** `T` is recomputed each pass with an `O(m)` `topk`. At
