@@ -43,5 +43,10 @@ experiments/data/
 # cited measurement that is not in the repository cannot be checked.
 !packages/minviol/benchmarks/**/*.json
 
+# And the keep/reject ledger in packages/minviol/experiments/algo_memory.md names
+# one of these per experiment as its artefact. A ledger entry whose evidence is
+# not in the repository is an assertion, not a record.
+!packages/minviol/experiments/results/**/*.json
+
 # Editable-install metadata for packages/minviol
 packages/minviol/src/*.egg-info/

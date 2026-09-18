@@ -1,0 +1,54 @@
+{
+  "device": "mps",
+  "args": {
+    "variants": [
+      "moves-only"
+    ],
+    "instances": [
+      "tomography",
+      "dense-ineq"
+    ],
+    "seconds": 2.0,
+    "trials": 1,
+    "device": null,
+    "output": null
+  },
+  "records": [
+    {
+      "instance": "tomography",
+      "variant": "moves-only",
+      "trial": 0,
+      "violation": 47.0,
+      "feasible": false,
+      "iterations": 354,
+      "wall": 2.0340049266815186,
+      "counters": {
+        "screened": 625536,
+        "survivors": 625536,
+        "sparse_chunks": 362,
+        "untouched_max_inexact": 0,
+        "constraint_candidate_products": 8757504,
+        "moves_applied": 7,
+        "passes": 362,
+        "iterations": 354
+      }
+    },
+    {
+      "instance": "dense-ineq",
+      "variant": "moves-only",
+      "trial": 0,
+      "violation": 33.09933853149414,
+      "feasible": false,
+      "iterations": 96,
+      "wall": 2.0100789070129395,
+      "counters": {
+        "screened": 94848,
+        "survivors": 2892,
+        "constraint_candidate_products": 57830752,
+        "moves_applied": 150,
+        "passes": 247,
+        "iterations": 96
+      }
+    }
+  ]
+}
