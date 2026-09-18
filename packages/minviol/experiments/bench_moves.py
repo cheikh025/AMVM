@@ -60,6 +60,16 @@ VARIANTS = {
                  "kick_escalation": True},
 
 
+    # Experiment 6: move two variables at once, with independent steps, when
+    # nothing else can move the instance.
+    "compound": {"swap_moves": False, "single_variable_moves": True,
+                 "perturbation": "active", "acceptance": "linf_l2_tiebreak",
+                 "kick_escalation": True, "compound_moves": True},
+    "compound-wide": {"swap_moves": False, "single_variable_moves": True,
+                      "perturbation": "active", "acceptance": "linf_l2_tiebreak",
+                      "kick_escalation": True, "compound_moves": True,
+                      "compound_width": 128},
+
     # Experiment 4, refined: escalate only after a long run of failures, so an
     # instance still making progress is left alone.
     "escalate-patient": {"swap_moves": False, "single_variable_moves": True,

@@ -88,6 +88,27 @@ class Batch:
 
     # -- moves ------------------------------------------------------------
 
+    def apply_compound(self, instances, left, right, q_left, q_right):
+        """Set two variables to two levels at once, per listed instance.
+
+        Unlike a swap the two steps are independent, so they cannot be folded into
+        one scaled column difference. Both are read before either index is
+        written, and the two are summed into a single residual update so that a
+        constraint touched by both columns is updated once.
+        """
+        if not len(instances):
+            return
+        delta_left = (self.domain[instances, q_left]
+                      - self.domain[instances, self.x_idx[instances, left]])
+        delta_right = (self.domain[instances, q_right]
+                       - self.domain[instances, self.x_idx[instances, right]])
+        update = (delta_left[None, :] * self.matrix.columns(left)
+                  + delta_right[None, :] * self.matrix.columns(right))
+        self.y[:, instances] += update
+        self.x_idx[instances, left] = q_left
+        self.x_idx[instances, right] = q_right
+        self._refresh_caches()
+
     def apply_moves(self, instances, left, right, q_left, q_right):
         """Apply one move per listed instance and update the caches.
 

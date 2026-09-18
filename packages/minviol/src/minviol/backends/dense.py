@@ -44,17 +44,25 @@ class DenseMatrix:
 
     # -- candidate scoring -------------------------------------------------
 
-    def _candidate_y(self, base_y, delta_sel, left_sel, right_sel, row_index):
+    def _candidate_y(self, base_y, delta_sel, left_sel, right_sel, row_index,
+                     delta_right_sel=None):
         """Values of ``A x`` for a candidate block, from already-selected candidates.
 
-        ``right_sel is None`` is a single-variable move; the two-variable case is
-        the swap. Keeping both in one expression is what lets the single-variable
-        pass reuse this backend unchanged.
+        Three shapes, and the arithmetic has to stay distinct for the first two.
+        ``right_sel is None`` is a single-variable move. With ``right_sel`` and no
+        ``delta_right_sel`` it is a swap, whose two variables move by equal and
+        opposite steps, so one step scales the column difference -- that grouping
+        is what the swap path is tested against and must not be rewritten. With
+        both it is a compound move, whose two steps are independent and do not
+        factor.
         """
-        column = self.A[row_index, left_sel]
-        if right_sel is not None:
-            column = column - self.A[row_index, right_sel]
-        return base_y + delta_sel * column
+        left_column = self.A[row_index, left_sel]
+        if right_sel is None:
+            return base_y + delta_sel * left_column
+        if delta_right_sel is None:
+            return base_y + delta_sel * (left_column - self.A[row_index, right_sel])
+        return (base_y + delta_sel * left_column
+                + delta_right_sel * self.A[row_index, right_sel])
 
     def screen(self, batch, tag, left, right, delta, bound, screen_rows, tile):
         """Return the candidates staying under ``bound`` on their instance's worst rows."""
@@ -75,7 +83,7 @@ class DenseMatrix:
                 else torch.zeros(0, dtype=torch.bool, device=self.device))
 
     def exact_scores(self, batch, tag, left, right, delta, prune_bound, screen_rows,
-                     options, counters):
+                     options, counters, delta_right=None):
         """Exact maximum violation and sum of squares per candidate, pruning as it goes.
 
         A running maximum only grows, so a candidate already above its instance's
@@ -95,8 +103,10 @@ class DenseMatrix:
         while start < n_constraints and len(live):
             rows = slice(start, start + stage)
             base = batch.y[rows][:, tag[live]]
-            y = self._candidate_y(base, delta[live][None, :], left[live],
-                                  None if right is None else right[live], rows)
+            y = self._candidate_y(
+                base, delta[live][None, :], left[live],
+                None if right is None else right[live], rows,
+                None if delta_right is None else delta_right[live][None, :])
             v = viol.violation(y, batch.lower[rows][:, tag[live]],
                                batch.upper[rows][:, tag[live]])
             if batch.row_scale is not None:

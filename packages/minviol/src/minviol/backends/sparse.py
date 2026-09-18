@@ -175,6 +175,32 @@ class SparseMatrix:
         """Elementwise test of whether ``A[rows, cols]`` is stored."""
         return self.lookup(cols, rows)[0]
 
+    def _independent_steps(self, left, right, delta, delta_right):
+        """``(owner, constraint, step)`` for a compound move's two independent steps.
+
+        A swap's two steps are equal and opposite, so its column difference can be
+        assembled before either step scales it -- which is what keeps the sparse
+        and dense backends bitwise equal there. A compound move's steps do not
+        factor, so each column is scaled by its own step and the two are summed
+        per ``(candidate, constraint)``. Constraints touched by both columns
+        appear once, with the sum.
+        """
+        owner, rows, values = self._gather_columns(left)
+        contribution = delta[owner] * values
+        owner_r, rows_r, values_r = self._gather_columns(right)
+        owner = torch.cat([owner, owner_r])
+        rows = torch.cat([rows, rows_r])
+        contribution = torch.cat([contribution, delta_right[owner_r] * values_r])
+        if not len(owner):
+            empty = torch.empty(0, dtype=torch.long, device=self.device)
+            return empty, empty, torch.empty(0, dtype=self.dtype, device=self.device)
+
+        key = owner * self.shape[0] + rows
+        unique_key, inverse = torch.unique(key, return_inverse=True)
+        accumulated = torch.zeros(len(unique_key), dtype=self.dtype, device=self.device)
+        accumulated.scatter_add_(0, inverse, contribution)
+        return (unique_key // self.shape[0], unique_key % self.shape[0], accumulated)
+
     def _column_difference(self, left, right):
         """Union of the two columns' supports, as ``(owner, constraint, value)``.
 
@@ -251,7 +277,7 @@ class SparseMatrix:
         return bounds
 
     def exact_scores(self, batch, tag, left, right, delta, prune_bound, screen_rows,
-                     options, counters):
+                     options, counters, delta_right=None):
         """Exact maximum violation and sum of squares per candidate."""
         n_candidates = len(tag)
         maxima = torch.empty(n_candidates, dtype=self.dtype, device=self.device)
@@ -264,12 +290,15 @@ class SparseMatrix:
             maxima[piece], squares[piece] = self._score_block(
                 batch, tag[piece], left[piece],
                 None if right is None else right[piece], delta[piece],
-                screen_rows=screen_rows, counters=counters)
+                screen_rows=screen_rows, counters=counters,
+                delta_right=None if delta_right is None else delta_right[piece])
         return maxima, squares
 
-    def _score_block(self, batch, tag, left, right, delta, screen_rows, counters):
+    def _score_block(self, batch, tag, left, right, delta, screen_rows, counters,
+                     delta_right=None):
         untouched = self._untouched_max(batch, tag, left, right, screen_rows, counters)
-        touched_max, delta_l2 = self._touched(batch, tag, left, right, delta, counters)
+        touched_max, delta_l2 = self._touched(batch, tag, left, right, delta, counters,
+                                              delta_right)
         return torch.maximum(untouched, touched_max), batch.l2[tag] + delta_l2
 
     def _untouched_max(self, batch, tag, left, right, screen_rows, counters):
@@ -287,10 +316,14 @@ class SparseMatrix:
         # falling back on it stays sound when a candidate covers all of T.
         return torch.maximum(masked.max(dim=1).values, screen_rows.tau[tag])
 
-    def _touched(self, batch, tag, left, right, delta, counters):
+    def _touched(self, batch, tag, left, right, delta, counters, delta_right=None):
         """Maximum violation over the touched constraints, and the change in L2."""
         n_candidates = len(tag)
-        cand, row, accumulated = self._column_difference(left, right)
+        if delta_right is None:
+            cand, row, accumulated = self._column_difference(left, right)
+            step = None if not len(cand) else delta[cand] * accumulated
+        else:
+            cand, row, step = self._independent_steps(left, right, delta, delta_right)
         if not len(cand):
             return (torch.full((n_candidates,), NEG_INF, dtype=self.dtype,
                                device=self.device),
@@ -299,15 +332,11 @@ class SparseMatrix:
         instance = tag[cand]
         counters.bump("constraint_candidate_products", len(cand))
 
-        # The step multiplies the assembled column difference, not each half
-        # separately. That is the grouping the dense backend uses, and an
-        # algebraically equal regrouping would put the two backends a unit in the
-        # last place apart on every swap.
         y_old = batch.y[row, instance]
         lower, upper = batch.lower[row, instance], batch.upper[row, instance]
         scale = None if batch.row_scale is None else batch.row_scale[row, instance]
         v_old = viol.violation(y_old, lower, upper)
-        v_new = viol.violation(y_old + delta[cand] * accumulated, lower, upper)
+        v_new = viol.violation(y_old + step, lower, upper)
         if scale is not None:
             v_old, v_new = v_old * scale, v_new * scale
 

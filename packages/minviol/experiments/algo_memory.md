@@ -169,6 +169,7 @@ changed nothing. Ranked by what they bought:
 
 | # | Date | Title | Layer | Decision | Median ratio | Paired | Notes |
 |---|---|---|---|---|---|---|---|
+| 6 | 2026-09-18 | A genuine compound two-variable move | Search | **REVERT** (flag kept, default off) | 1.000 | 3 better / 8 worse | ill-cond is 2-opt optimal, exhaustively |
 | 5 | 2026-09-18 | Escape by the least damaging move | Search | **REVERT** | 1.108 | 0 better / 21 worse | deterministic escape cycles; sampling it does not save it |
 | 4 | 2026-09-18 | Widen the kick while an instance stalls | Search | **KEEP** | 0.923 | 13 better / 0 worse | feasibility 1/5->3/5, 3/5->5/5, 3/5->5/5 |
 | 3 | 2026-09-18 | Refuse to kick a variable that cannot move | Search | **REVERT** | 1.000 | 4 better / 5 worse | mechanism real, quality neutral; kick strength is the binding constraint |
@@ -629,4 +630,103 @@ possible single move loses to a mediocre wide one.
 
 - `experiments/results/exp05_uphill.json`, `exp05_uphill_sampled.json`
 - Code: reverted
+
+---
+
+## Experiment 6: A genuine compound two-variable move
+
+**Date:** 2026-09-18 · **Idea layer:** Search / move operator · **Decision:** REVERT
+the default; capability kept behind `compound_moves`, off.
+
+### Observation that prompted it
+
+`ill-cond` and `tomography` are the only instances that never reach a feasible
+point, and both sit where every single-variable candidate is worse. That is
+exactly the situation a compound move exists for. It is also the move a swap only
+approximates: a swap makes two variables *exchange* levels, which forces the two
+steps to be equal and opposite and preserves the multiset of assigned levels — a
+structure with nothing to do with which constraint is binding.
+
+### Idea card
+
+Move two variables at once with **independent** steps. Draw the pairs from the
+`compound_width` single candidates that lose the least, rather than from all
+pairs, which would be quadratic in the variable count. Run the pass only for
+instances no other pass could move, since it costs a full single-candidate
+scoring before it starts.
+
+**Hypothesis:** the two stuck instances move.
+
+### Implementation surface
+
+- `src/minviol/backends/{dense,sparse}.py`: `exact_scores(..., delta_right=)`; the
+  swap grouping is left byte-for-byte alone, since it is what the parity and
+  sparse-equals-dense tests are written against, and a third branch is added for
+  steps that do not factor (`_independent_steps` on the sparse side)
+- `src/minviol/problem.py`: `apply_compound`
+- `src/minviol/engine.py`: `compound_pass`, `_per_instance_best`
+- `tests/test_compound.py`: both backends against brute force, plus a system built
+  so that only a pair can improve it
+- Feature flag: `Options.compound_moves` · ~140 lines
+
+### Results
+
+**The hypothesis is refuted, and exhaustively so.** From the local optimum each
+instance settles at:
+
+| Instance | pair width | pairs scored | objective before → after |
+|---|---:|---:|---|
+| ill-cond | 32 | 493 | 3.5924 → 3.5924 |
+| ill-cond | 128 | 8,100 | 3.5924 → 3.5924 |
+| ill-cond | **384 (all of them)** | **73,152** | 3.5924 → 3.5924 |
+| tomography | 384 | 73,225 | 4.0000 → 4.0000 |
+| dense-ineq | 32 | 495 | 53.2138 → 53.0686 |
+
+`ill-cond` has 128 variables over 4 levels, so 384 single candidates is *every*
+single candidate and 73,152 pairs is *every* pair. **No pair improves it.** It is
+not a 1-opt local optimum that a deeper neighbourhood escapes; it is a 2-opt local
+optimum.
+
+End to end, equal time, 5 trials: **3 pairs better, 8 worse, 19 tied**, ratio
+1.0000, and the feasibility count falls — `dense-ineq` 3/5 → 1/5, `equality` 5/5 →
+4/5, `two-sided` 5/5 → 4/5.
+
+### Analysis
+
+The pass is correct — it is checked against from-scratch recomputation on both
+backends, and on a two-variable system built so that every single move raises the
+maximum from 2 to 3 or 6 while moving both to level 1 reaches 0, it finds the pair.
+It simply has nothing to find on the instances it was built for, and on the
+instances it was not built for it spends a full scoring pass to discover that,
+which costs iterations that were buying feasibility.
+
+That reframes what is wrong with `ill-cond` and `tomography`. It is not
+neighbourhood depth. A search that cannot improve with any pair of variables is
+not going to be rescued by triples either — the returns on depth are clearly
+falling, and the four experiments that touched the escape (1, 3, 4, 5) already
+said width beats quality. What is left is the *objective*: both instances have a
+tied or near-tied active set, and the search is choosing among candidates using a
+maximum that cannot see past the single worst constraint.
+
+The capability is kept behind a flag that defaults off, following the precedent of
+entry 6 in the AMVM ledger (`PRUNE_TO_INCUMBENT`, kept as a measured, default-off
+flag). It is tested, it is free when off, and the instance class it is right for —
+systems where variables must move in concert — is one this benchmark set does not
+contain and a caller might.
+
+### Lessons
+
+- "Stuck at a local optimum" says nothing about *which* neighbourhood. Measure the
+  depth before deepening it: one exhaustive pair enumeration settled in 0.09s what
+  would otherwise have been several experiments of guessing.
+- A move that is provably correct and provably capable can still be the wrong
+  move, and the cost of finding that out is paid in iterations the rest of the
+  search needed.
+- Three experiments now point the same way: the escape is not the problem. The
+  next thing to change is what the search *sees*.
+
+### Artefacts
+
+- `experiments/results/exp06_compound.json`
+- `src/minviol/engine.py:compound_pass`, `tests/test_compound.py`
 

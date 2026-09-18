@@ -125,6 +125,19 @@ class Options:
     # launches rather than by arithmetic -- see docs/sparse-design.md.
     swap_moves: bool = False
 
+    # Move two variables at once, with independent steps, drawn from the single
+    # moves that lose the least. Runs only for instances no other pass could move,
+    # because it costs a full single-candidate scoring before it starts. This is
+    # the move a swap only approximates: a swap fixes the two steps to be equal
+    # and opposite, which preserves the level histogram and has nothing to do with
+    # which constraint is binding.
+    compound_moves: bool = False
+
+    # How many of the least damaging single candidates the pairs are drawn from.
+    # All pairs would be quadratic in the variable count, and a pair built from
+    # two badly damaging moves is not going to win.
+    compound_width: int = 32
+
     # Candidate block of the exact stage: constraints x tile floats.
     candidate_tile: int = 4096
 

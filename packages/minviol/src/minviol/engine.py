@@ -124,7 +124,8 @@ def _admissibility(batch, tag, maxima, squares, eps):
 
 
 def _evaluate_and_apply(batch, tag, left, right, delta, q_left, q_right,
-                        screen_rows, options, counters, improved):
+                        screen_rows, options, counters, improved, delta_right=None,
+                        compound=False):
     """Screen, score and apply the best candidate per instance. Returns nothing."""
     eps = options.improvement_epsilon(batch.objective)
     if not torch.is_tensor(eps):
@@ -132,19 +133,26 @@ def _evaluate_and_apply(batch, tag, left, right, delta, q_left, q_right,
     bound = (batch.objective + eps if batch.acceptance == viol.LINF_L2_TIEBREAK
              else batch.objective - eps)
 
-    keep = batch.matrix.screen(batch, tag, left, right, delta, bound, screen_rows,
-                               options.candidate_tile)
+    if compound:
+        # Screening assumes a swap's shared step, so it would score a compound
+        # candidate as something it is not. The exact stage handles these.
+        keep = torch.ones(len(tag), dtype=torch.bool, device=batch.device)
+    else:
+        keep = batch.matrix.screen(batch, tag, left, right, delta, bound, screen_rows,
+                                   options.candidate_tile)
     counters.bump("screened", len(tag))
     tag, left, delta = tag[keep], left[keep], delta[keep]
     right = None if right is None else right[keep]
     q_left = q_left[keep]
     q_right = None if q_right is None else q_right[keep]
+    delta_right = None if delta_right is None else delta_right[keep]
     counters.bump("survivors", len(tag))
     if not len(tag):
         return
 
     maxima, squares = batch.matrix.exact_scores(batch, tag, left, right, delta, bound,
-                                                screen_rows, options, counters)
+                                                screen_rows, options, counters,
+                                                delta_right)
     admissible = _admissibility(batch, tag, maxima, squares, eps)
     _, position = best_per_instance(batch, tag, maxima, squares, admissible)
 
@@ -152,10 +160,14 @@ def _evaluate_and_apply(batch, tag, left, right, delta, q_left, q_right,
     instances = torch.nonzero(position < len(tag), as_tuple=True)[0]
     if not len(instances):
         return
-    batch.apply_moves(instances, left[chosen],
-                      None if right is None else right[chosen],
-                      q_left[chosen],
-                      None if q_right is None else q_right[chosen])
+    if compound:
+        batch.apply_compound(instances, left[chosen], right[chosen],
+                             q_left[chosen], q_right[chosen])
+    else:
+        batch.apply_moves(instances, left[chosen],
+                          None if right is None else right[chosen],
+                          q_left[chosen],
+                          None if q_right is None else q_right[chosen])
     improved[instances] = True
     counters.bump("moves_applied", len(instances))
 
@@ -218,6 +230,85 @@ class ScreeningRows(NamedTuple):
     tau: torch.Tensor       # (instances,)
 
 
+def _per_instance_best(batch, tag, scores, width):
+    """Flat indices of each instance's ``width`` lowest-scoring candidates.
+
+    Candidates arrive as one flat list tagged by instance, so selecting per
+    instance means laying them out by instance first. One scatter into a padded
+    block and one ``topk``, rather than a loop.
+    """
+    counts = torch.bincount(tag, minlength=batch.n_instances)
+    widest = int(counts.max())
+    offsets = torch.cumsum(counts, 0) - counts
+    within = torch.arange(len(tag), device=batch.device) - offsets[tag]
+
+    padded = torch.full((batch.n_instances, widest), float("inf"),
+                        dtype=scores.dtype, device=batch.device)
+    padded[tag, within] = scores
+    take = min(width, widest)
+    chosen_within = padded.topk(take, dim=1, largest=False).indices
+    flat = offsets[:, None] + chosen_within
+    # Instances with fewer candidates than `take` would index past their block.
+    return flat, chosen_within < counts[:, None]
+
+
+def compound_pass(batch, active, screen_rows, options, counters):
+    """One batched compound pass: move two variables at once. Returns who improved.
+
+    This is the move a swap only pretends to be. A swap makes two variables
+    exchange levels, which fixes the two steps to be equal and opposite and keeps
+    the multiset of assigned levels -- a structure that has nothing to do with
+    which constraint is binding. Here the two steps are independent, and the pairs
+    are drawn from the single moves that lose the least, so the pass can leave a
+    point where every single move is worse.
+
+    Pairs are taken from the ``compound_width`` least damaging single candidates
+    rather than from all of them: all pairs would be quadratic in the variable
+    count, and a pair built from two badly damaging moves is not going to win.
+    """
+    improved = torch.zeros(batch.n_instances, dtype=torch.bool, device=batch.device)
+    tag, left, level = candidate_moves(batch, active)
+    if not len(tag):
+        return improved
+    delta = batch.domain[tag, level] - batch.domain[tag, batch.x_idx[tag, left]]
+    alive = delta != 0
+    tag, left, level, delta = tag[alive], left[alive], level[alive], delta[alive]
+    if not len(tag):
+        return improved
+
+    singles, _ = batch.matrix.exact_scores(batch, tag, left, None, delta,
+                                           batch.objective, screen_rows, options,
+                                           counters)
+    picks, valid = _per_instance_best(batch, tag, singles, options.compound_width)
+    width = picks.shape[1]
+    if width < 2:
+        return improved
+
+    # Every unordered pair of the kept candidates, for every instance at once.
+    first, second = torch.triu_indices(width, width, offset=1, device=batch.device)
+    rows = torch.arange(batch.n_instances, device=batch.device)[:, None]
+    a = picks[rows, first[None, :]]
+    b = picks[rows, second[None, :]]
+    usable = (valid[rows, first[None, :]] & valid[rows, second[None, :]]
+              & active[:, None])
+    a, b, usable = a.reshape(-1), b.reshape(-1), usable.reshape(-1)
+    a, b = a[usable], b[usable]
+    if not len(a):
+        return improved
+
+    # A pair has to move two different variables to be a compound move at all.
+    distinct = left[a] != left[b]
+    a, b = a[distinct], b[distinct]
+    if not len(a):
+        return improved
+    counters.bump("compound_candidates", len(a))
+
+    _evaluate_and_apply(batch, tag[a], left[a], left[b], delta[a],
+                        level[a], level[b], screen_rows, options, counters, improved,
+                        delta_right=delta[b], compound=True)
+    return improved
+
+
 def screening_rows(batch, n_filters) -> ScreeningRows:
     """Return the ``n_filters`` most violated constraints per instance.
 
@@ -248,7 +339,8 @@ def local_search(batch, active, options, counters, deadline=None, max_passes=100
     assigned levels, so from a point with the wrong level histogram no sequence
     of swaps can reach a better one.
     """
-    if not (options.single_variable_moves or options.swap_moves):
+    if not (options.single_variable_moves or options.swap_moves
+            or options.compound_moves):
         raise ValueError("no move class is enabled; set single_variable_moves or "
                          "swap_moves")
     n_filters = options.n_filters or 100
@@ -263,6 +355,13 @@ def local_search(batch, active, options, counters, deadline=None, max_passes=100
             rows = screening_rows(batch, n_filters)
         if options.swap_moves:
             improved |= swap_pass(batch, working, rows, options, counters)
+        if options.compound_moves:
+            # Last, and only for instances nothing else could move: a compound
+            # pass costs a full single-candidate scoring before it starts.
+            stuck = working & ~improved
+            if bool(stuck.any()):
+                rows = screening_rows(batch, n_filters)
+                improved |= compound_pass(batch, stuck, rows, options, counters)
         counters.bump("passes")
         working = working & improved
         if not bool(working.any()):
