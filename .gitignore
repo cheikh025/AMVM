@@ -38,3 +38,6 @@ experiments/data/
 # Benchmark results are the evidence for the ledger in experiments/algo_memory.md,
 # so they are tracked despite the blanket *.json rule above.
 !experiments/results/**/*.json
+
+# Editable-install metadata for packages/minviol
+packages/minviol/src/*.egg-info/
