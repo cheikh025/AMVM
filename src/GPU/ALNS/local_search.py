@@ -376,9 +376,9 @@ class LocalSearch:
         screen_rows = state.L_set[1][:NUM_FILTERS]
         # Residuals are fixed for the whole pass, so the visiting order is computed
         # once here rather than per candidate chunk.
+        pruning = tuning.prune_worthwhile(len(state.inputs))
         row_order = (torch.argsort(state.absD_ks, descending=True)
-                     if tuning.PRUNE_TO_INCUMBENT and tuning.RESIDUAL_ORDERED_ROWS
-                     else None)
+                     if pruning and tuning.RESIDUAL_ORDERED_ROWS else None)
         infinity = torch.tensor(float("inf"), device=device, dtype=dtype)
 
         best_linf, best_l2 = infinity.clone(), infinity.clone()
@@ -427,7 +427,7 @@ class LocalSearch:
                     for start in range(0, len(survivor_i), candidate_chunk):
                         ii = index_i[survivor_i[start:start + candidate_chunk]]
                         jj = index_j[survivor_j[start:start + candidate_chunk]]
-                        if tuning.PRUNE_TO_INCUMBENT:
+                        if pruning:
                             # Nothing above the incumbent can win, and nothing above
                             # the acceptance bound can be taken at all.
                             maxima, squares = self._exact_candidate_scores_pruned(

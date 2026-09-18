@@ -77,6 +77,17 @@ LOCAL_SEARCH_DEADLINE = _flag("AMVM_LOCAL_SEARCH_DEADLINE", True)
 # PRUNE_TO_INCUMBENT, since without pruning every row is visited regardless.
 RESIDUAL_ORDERED_ROWS = _flag("AMVM_RESIDUAL_ORDERED_ROWS", True)
 
+# Fewest residual rows for which the pruned, residual-ordered stage is worth its
+# overhead. It buys the right to stop reading rows, so it pays only when there are
+# many rows to stop reading; below that the row gather, the per-stage compaction
+# and the ordering sort cost more than they save. Measured on q_proj at 100
+# iterations, one variant per process: 0.85x at 1,024 samples, 0.87x at 4,096,
+# 1.02x at 8,192, 1.13x at 16,384. The two other applications sit far below the
+# crossover (tomography 728 samples at 0.80x, FIR 192 at 0.90x) and this gate is
+# what keeps the default from making them slower. Quantization in production runs
+# 262,144 samples, far above it.
+PRUNE_MIN_SAMPLES = _int("AMVM_PRUNE_MIN_SAMPLES", 8192)
+
 # Rows in the first pruning stage. Later stages grow as candidates die, holding
 # the intermediate tensor near the memory budget.
 PRUNE_FIRST_STAGE = _int("AMVM_PRUNE_FIRST_STAGE", 512)
@@ -151,6 +162,11 @@ def row_tile_for(n_rows: int, candidate_chunk: int, element_size: int,
     return int(max(1, min(n_rows, affordable)))
 
 
+def prune_worthwhile(n_samples: int) -> bool:
+    """Whether the pruned exact stage pays at this problem size."""
+    return PRUNE_TO_INCUMBENT and n_samples >= PRUNE_MIN_SAMPLES
+
+
 def resolve_row_tile(n_rows: int, candidate_chunk: int, element_size: int) -> int:
     """Return the row tile the active configuration asks for."""
     if BUDGET_ROW_TILE:
@@ -166,6 +182,7 @@ def describe(device: torch.device = None) -> dict:
         "prune_to_incumbent": PRUNE_TO_INCUMBENT,
         "prune_first_stage": PRUNE_FIRST_STAGE,
         "prune_stage_growth": PRUNE_STAGE_GROWTH,
+        "prune_min_samples": PRUNE_MIN_SAMPLES,
         "residual_ordered_rows": RESIDUAL_ORDERED_ROWS,
         "local_search_deadline": LOCAL_SEARCH_DEADLINE,
         "batched_rows": BATCHED_ROWS,

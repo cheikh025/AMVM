@@ -230,7 +230,8 @@ much. Worth deciding deliberately rather than discovering in a run.
 | A3 device-resident swap | merge, on by default | identical selection; synchronizations 421 to 155 |
 | A4 budget-derived row tile | merge, on by default | identical objective; operations 46,900 to 5,200 |
 | A6 incumbent pruning | ON by default since 2026-09-18, paired with residual ordering | alone it is 0.84x and 0.79x, i.e. slower than no pruning, on the narrow layers |
-| Residual-ordered rows | merge, on by default | exact on real layers; 1.25x, 1.39x, 1.65x over no pruning; no paired row worse |
+| Residual-ordered rows | merge, on by default above 8,192 samples | exact on real layers; 1.01x at 20 iterations, 1.13x at 100, and 1.3x-2x more iterations under a time budget |
+| Sample-count gate on pruning | merge, on by default | below 8,192 samples pruning costs more than it saves, which made tomography 0.70x |
 | Local-search deadline | merge, on by default | one 10s solve had been running 180s+ under the tie-break policy |
 | Acceptance policy | keep `linf_l2_nonincrease` | no policy wins everywhere; removing the gate buys iterations and loses quality |
 | Budget split across replicas | do not implement | worse or neutral everywhere; +24% on fc2 at five replicas |

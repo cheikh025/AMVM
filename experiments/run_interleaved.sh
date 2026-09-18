@@ -19,6 +19,14 @@
 # commits, which flags cannot express; that one needs a worktree and does pay for
 # a second set of processes.
 #
+# IMPORTANT: this is only safe for variants that run the SAME kernels. Sharing a
+# process also shares compiled-kernel caches, so a variant whose tensor shapes
+# differ from its neighbour's can be flattered by whatever ran before it. The
+# pruned swap stage compacts its candidate set every stage and so compiles a
+# kernel per shape: measured this way it looked 1.25x faster than the unpruned
+# path, against 1.01x with one variant per process. When variants differ in shape
+# behaviour, run one per process and alternate the processes instead.
+#
 # Results land in experiments/results/<label>/, the same layout as
 # run_protocol.sh, so summarize_results.py and `bench_row_solve.py compare` read
 # them unchanged.

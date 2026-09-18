@@ -206,6 +206,7 @@ def test_incumbent_pruning_picks_the_same_swap(make_state, monkeypatch, seed, po
     """
     monkeypatch.setattr(tuning, "BUDGET_ROW_TILE", False)
     monkeypatch.setattr(tuning, "PRUNE_FIRST_STAGE", 8)
+    monkeypatch.setattr(tuning, "PRUNE_MIN_SAMPLES", 0)
 
     reference_state = _swap_instance(make_state, seed, rows=96, columns=32)
     reference_state.acceptance_policy = policy
@@ -304,6 +305,7 @@ def test_residual_ordered_rows_pick_the_same_swap(make_state, monkeypatch, seed,
     monkeypatch.setattr(tuning, "BUDGET_ROW_TILE", False)
     monkeypatch.setattr(tuning, "PRUNE_FIRST_STAGE", 8)
     monkeypatch.setattr(tuning, "PRUNE_TO_INCUMBENT", True)
+    monkeypatch.setattr(tuning, "PRUNE_MIN_SAMPLES", 0)
 
     indexed_state = _swap_instance(make_state, seed, rows=96, columns=32)
     indexed_state.acceptance_policy = policy
@@ -361,6 +363,7 @@ def test_residual_ordering_prunes_more_than_index_order(make_state, monkeypatch)
     monkeypatch.setattr(tuning, "BUDGET_ROW_TILE", False)
     monkeypatch.setattr(tuning, "PRUNE_FIRST_STAGE", 4)
     monkeypatch.setattr(tuning, "PRUNE_TO_INCUMBENT", True)
+    monkeypatch.setattr(tuning, "PRUNE_MIN_SAMPLES", 0)
 
     def work(ordered):
         monkeypatch.setattr(tuning, "RESIDUAL_ORDERED_ROWS", ordered)
@@ -373,3 +376,36 @@ def test_residual_ordering_prunes_more_than_index_order(make_state, monkeypatch)
         return counters.snapshot().get("pruned_row_candidate_products", 0)
 
     assert work(ordered=True) < work(ordered=False)
+
+
+def test_pruning_is_skipped_below_the_sample_threshold(make_state, monkeypatch):
+    """The gate that keeps the default from slowing the other applications down.
+
+    Pruning buys the right to stop reading rows, so it pays only when there are
+    many rows to stop reading. Tomography (728 samples) and FIR design (192) sit
+    far below the measured crossover, and without this gate the shared default
+    made both slower.
+    """
+    from ALNS import counters
+
+    monkeypatch.setattr(tuning, "PRUNE_TO_INCUMBENT", True)
+    monkeypatch.setattr(tuning, "PRUNE_FIRST_STAGE", 4)
+
+    def products(threshold):
+        monkeypatch.setattr(tuning, "PRUNE_MIN_SAMPLES", threshold)
+        state = _swap_instance(make_state, 5, rows=64, columns=32, bits=3)
+        search = LocalSearch(state)
+        search.delta_q = 1
+        counters.reset()
+        search._perform_swap_device_resident()
+        return counters.snapshot().get("pruned_row_candidate_products", 0)
+
+    assert products(threshold=0) > 0, "below-threshold gate should not disable pruning at 0"
+    assert products(threshold=10_000) == 0, "64 samples is far below 10,000; pruning must be skipped"
+
+    # The boundary itself, read against an explicit threshold rather than whatever
+    # the previous call left patched in.
+    monkeypatch.setattr(tuning, "PRUNE_MIN_SAMPLES", 8192)
+    assert tuning.prune_worthwhile(8192) and not tuning.prune_worthwhile(8191)
+    monkeypatch.setattr(tuning, "PRUNE_TO_INCUMBENT", False)
+    assert not tuning.prune_worthwhile(1_000_000), "the flag still overrides the gate"

@@ -91,6 +91,8 @@ remains for the one case flags cannot express, comparing different commits.
 
 | # | Date | Title | Layer | Decision | Correctness | Memory | Runtime |
 |---|---|---|---|---|---|---|---|
+| 15 | 2026-09-18 | Sample-count gate on the pruned stage | Infrastructure | KEEP, on by default | same path below the gate | neutral | restores tomography and FIR to parity |
+| 14 | 2026-09-18 | Cross-application check, and a measurement fault | Method | CORRECTION | exact throughout | neutral | in-process variants warm each other's kernels |
 | 13 | 2026-09-18 | Split the budget across replicas | Search | REVERT | feasible | neutral | worse or neutral; +24% on fc2 at R=5 |
 | 12 | 2026-09-18 | Residual-ordered rows in the pruned stage | Search | KEEP, on by default with entry 6 | identical solutions and objective sequences on all three layers | neutral | 1.25x-1.65x over no pruning |
 | 11 | 2026-09-18 | Deadline inside the local-search descent | Infrastructure | KEEP, on by default | changes the search; judged at equal time | neutral | makes the budget real: one 10s solve had run 180s+ |
@@ -104,6 +106,105 @@ remains for the one case flags cannot express, comparing different commits.
 | 3 | 2026-09-16 | Host-side index gathering and settled-pass skip | Infrastructure/Search | KEEP | exact; skip is statistically equivalent | neutral | 1.17x-1.46x over baseline |
 | 2 | 2026-09-15 | Bounded exhaustive swap evaluation | Infrastructure | KEEP | exact match | 4x smaller filter tensor in measured default case | 2.54x slower on CPU microbenchmark |
 | 1 | 2026-09-15 | Explicit domains and physical move updates | Evaluator/Search | KEEP | 27/27 tests pass | neutral | full benchmark unavailable |
+
+---
+
+## Experiment 15: Sample-count gate on the pruned stage
+
+**Date:** 2026-09-18 · **Idea layer:** Infrastructure · **Decision:** KEEP, on by default
+
+### Idea card
+
+Pruning buys the right to stop reading residual rows, so it can only pay where
+there are many rows to stop reading. Gate it on the sample count instead of
+choosing per application.
+
+### Results
+
+Crossover, q_proj at 100 iterations, one variant per process, two repetitions:
+
+| Samples | 1,024 | 2,048 | 4,096 | 8,192 | 16,384 |
+|---|---:|---:|---:|---:|---:|
+| Speedup | 0.85x | 0.85x | 0.87x | 1.02x | 1.13x |
+
+`PRUNE_MIN_SAMPLES` is 8,192. Quantization in production runs 262,144 samples and
+is unaffected. After the gate, and with both configurations now provably taking
+the same path (the pruned-work counter is zero for both):
+
+| Application | before the gate | after |
+|---|---:|---:|
+| FIR, 192 samples | 0.90x | 1.02x |
+| Tomography 32x32, 368 samples | 0.92x | 0.95x |
+| Tomography 64x64, 728 samples | 0.70x | 1.12x |
+
+### Analysis
+
+The residual scatter after gating, 0.95x to 1.12x, is the measurement noise floor
+for these small instances, not an effect: both sides run identical code.
+
+---
+
+## Experiment 14: Cross-application check, and a measurement fault
+
+**Date:** 2026-09-18 · **Idea layer:** Method · **Decision:** CORRECTION
+
+### Idea card
+
+Do the quantization gains carry to tomography and FIR design, which share the
+solver but not the problem shape? Both were run through the solver with the
+arguments their own entry points pass; neither application file was modified.
+
+### Results
+
+Active sets, which decide whether residual ordering can work at all:
+
+| Problem | Samples | Variables | At maximum | Within 1% |
+|---|---:|---:|---:|---:|
+| Quantization q_proj | 16,384 | 768 | 1 | 3 |
+| Tomography 64x64 | 728 | 4,096 | 2 | 2 |
+| FIR order 12 | 192 | 7 | 1 | 13 |
+
+FIR is the Chebyshev case the theory predicts: an optimum over 7 parameters
+equioscillates, and 13 of 192 samples sit within 1% of the maximum. Tomography's
+active set is as small as quantization's, so the premise holds there and the
+ordering still lost. The binding quantity is therefore not the active set but the
+number of samples, which is what entry 15 gates on.
+
+**The measurement fault.** Entry 12 reported 1.25x, 1.39x and 1.65x from
+`run_interleaved.sh`, which runs several variants in one process. The pruned path
+compacts its live candidate set every stage, so it compiles a new Metal kernel for
+each new shape, and a variant that runs after another pruned variant inherits a
+warm cache. The same configuration measured 122 ms with three variants in the
+process and 155 ms with two.
+
+Re-measured with one variant per process, alternated across processes:
+
+| Measurement | Reported | Corrected |
+|---|---|---|
+| q_proj, 20 iterations | 1.25x | 1.01x |
+| q_proj, 100 iterations | not measured | 1.13x |
+| q_proj, 10 s budget | 99 to 127 iterations | 99 to 126 iterations, 11/11 rows better, p=0.001 |
+| fc1, 10 s budget | 174 to 223 iterations | 171 to 227 iterations, 9/9 better, p=0.004 |
+| fc2, 10 s budget | 3 to 6 iterations | 3 to 6 iterations, 10/10 better, p=0.002 |
+
+### Analysis
+
+The decision in entry 12 survives, but for a different reason than reported. The
+per-iteration speedup at 20 iterations is about 1.01x, not 1.25x: at that length
+kernel compilation for the pruned path's changing shapes dominates. It amortizes,
+reaching 1.13x by 100 iterations, and under the production stopping rule the new
+defaults complete 1.3x to 2x more iterations and win every non-tied paired row on
+all three layers. The magnitude of the objective gain is small, a median of about
+0%, but the sign is unanimous over 24 pairs per layer.
+
+**Rule going forward:** `run_interleaved.sh` is safe only for variants that run
+the same kernels. When variants differ in tensor shapes, measure one variant per
+process and alternate the processes, as `ab_interleaved.sh` does. The script now
+says so, and `other_applications.py` takes `--only` for exactly this reason.
+
+### Artefacts
+
+`experiments/other_applications.py`, `experiments/results/applications/`
 
 ---
 
