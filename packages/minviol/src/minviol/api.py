@@ -11,13 +11,13 @@ small instance cannot fill a device on its own.
 """
 
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 import torch
 
 from . import engine, initialize
 from . import violation as viol
-from .backends import DenseMatrix
+from .backends import DenseMatrix, SparseMatrix
 from .counters import Counters
 from .options import Budget, Options
 from .problem import Batch
@@ -43,12 +43,33 @@ class Result:
 
 
 def _as_matrix(A):
+    """Accept a dense tensor, a torch sparse tensor, or an already-built backend.
+
+    The backend follows what the caller handed over rather than a density
+    heuristic: a guess that silently densified a matrix the caller deliberately
+    kept sparse would be a surprising way to run out of memory.
+    """
     if hasattr(A, "matvec"):
         return A
+    if isinstance(A, torch.Tensor) and A.layout != torch.strided:
+        return SparseMatrix.from_torch_sparse(A)
     A = torch.as_tensor(A)
     if A.ndim != 2:
         raise ValueError(f"A must be 2-D (constraints, variables), got shape {tuple(A.shape)}")
     return DenseMatrix(A)
+
+
+def _default_filters(matrix):
+    """How many constraints to keep in the screening set.
+
+    For the sparse backend this is not a tuning knob. It sets the set the
+    exactness argument quantifies over, and a candidate whose column covers all
+    of it falls back to a bound instead of an exact score. Keeping it above the
+    widest column makes that unreachable.
+    """
+    if getattr(matrix, "kind", "dense") == "sparse":
+        return max(128, matrix.max_nnz + 1)
+    return 100
 
 
 def _as_bound(value, name, n_constraints, n_instances, device, dtype, default):
@@ -137,6 +158,9 @@ def solve_batch(A, lower=None, upper=None, *, domain, init="lstsq_round", x0=Non
     if fixed is not None:
         fixed_t = torch.as_tensor(fixed, device=device, dtype=torch.bool)
         fixed_t = fixed_t.expand(n_instances, n_variables) if fixed_t.ndim == 1 else fixed_t
+
+    if options.n_filters is None:
+        options = replace(options, n_filters=_default_filters(matrix))
 
     counters = Counters()
     batch = Batch(matrix, x_idx, domain_t, lower_t, upper_t, row_scale=scale_t,

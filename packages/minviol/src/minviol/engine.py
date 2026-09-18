@@ -8,6 +8,7 @@ a point that satisfies these constraints", and it has been answered.
 """
 
 import time
+from typing import NamedTuple
 
 import torch
 
@@ -143,7 +144,7 @@ def _evaluate_and_apply(batch, tag, left, right, delta, q_left, q_right,
         return
 
     maxima, squares = batch.matrix.exact_scores(batch, tag, left, right, delta, bound,
-                                                options, counters)
+                                                screen_rows, options, counters)
     admissible = _admissibility(batch, tag, maxima, squares, eps)
     _, position = best_per_instance(batch, tag, maxima, squares, admissible)
 
@@ -204,16 +205,36 @@ def move_pass(batch, active, screen_rows, options, counters):
     return improved
 
 
-def screening_rows(batch, n_filters):
-    """The worst constraints per instance, which every candidate is screened against.
+class ScreeningRows(NamedTuple):
+    """The worst constraints per instance, and what bounds everything below them.
 
-    Keyed on the violation, not on the raw residual: with one-sided or asymmetric
-    bounds the largest residuals are not the most violated constraints, and
-    screening against the wrong set silently discards good candidates.
+    ``tau`` is the next violation after the kept ones. Every constraint outside
+    the kept set is at most ``tau``, which is what lets the sparse backend bound
+    the constraints a candidate did not touch without reading them.
     """
-    v = batch.violation_of(batch.y)
+
+    indices: torch.Tensor   # (instances, K)
+    values: torch.Tensor    # (instances, K)
+    tau: torch.Tensor       # (instances,)
+
+
+def screening_rows(batch, n_filters) -> ScreeningRows:
+    """Return the ``n_filters`` most violated constraints per instance.
+
+    Keyed on the violation, not on the raw value of ``A x``: with one-sided or
+    asymmetric bounds the largest values are not the most violated constraints,
+    and screening against the wrong set silently discards good candidates.
+    """
+    v = batch.violation_of(batch.y).T                       # (instances, constraints)
     k = min(n_filters, batch.n_constraints)
-    return v.T.topk(k, dim=1).indices
+    top = v.topk(min(k + 1, batch.n_constraints), dim=1)
+    if top.indices.shape[1] > k:
+        tau = top.values[:, k]
+    else:
+        # Nothing lies outside the kept set, so nothing needs bounding.
+        tau = torch.full((batch.n_instances,), float("-inf"), dtype=v.dtype,
+                         device=v.device)
+    return ScreeningRows(top.indices[:, :k], top.values[:, :k], tau)
 
 
 def local_search(batch, active, options, counters, deadline=None, max_passes=1000):

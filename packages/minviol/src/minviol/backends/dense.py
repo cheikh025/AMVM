@@ -51,7 +51,7 @@ class DenseMatrix:
         for start in range(0, len(tag), tile):
             piece = slice(start, start + tile)
             tags = tag[piece]
-            rows = screen_rows[tags].T                       # (screen, candidates)
+            rows = screen_rows.indices[tags].T               # (screen, candidates)
             cols = tags[None, :]
             base = batch.y[rows, cols]
             y = self._candidate_y(base, delta[piece][None, :], left[piece],
@@ -63,8 +63,8 @@ class DenseMatrix:
         return (torch.cat(survivors) if survivors
                 else torch.zeros(0, dtype=torch.bool, device=self.device))
 
-    def exact_scores(self, batch, tag, left, right, delta, prune_bound, options,
-                     counters):
+    def exact_scores(self, batch, tag, left, right, delta, prune_bound, screen_rows,
+                     options, counters):
         """Exact maximum violation and sum of squares per candidate, pruning as it goes.
 
         A running maximum only grows, so a candidate already above its instance's

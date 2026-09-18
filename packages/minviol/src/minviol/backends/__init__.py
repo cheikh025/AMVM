@@ -8,5 +8,6 @@ in the first place.
 """
 
 from .dense import DenseMatrix
+from .sparse import SparseMatrix
 
-__all__ = ["DenseMatrix"]
+__all__ = ["DenseMatrix", "SparseMatrix"]

@@ -7,11 +7,11 @@ there is no certificate, and a nonzero answer means "not found", never
 """
 
 from .api import Result, solve, solve_batch
-from .backends import DenseMatrix
+from .backends import DenseMatrix, SparseMatrix
 from .counters import Counters
 from .options import Budget, Options
 from .violation import violation
 
-__all__ = ["solve", "solve_batch", "Result", "Budget", "Options", "DenseMatrix",
+__all__ = ["solve", "solve_batch", "Result", "Budget", "Options", "DenseMatrix", "SparseMatrix",
            "Counters", "violation"]
 __version__ = "0.1.0.dev0"
