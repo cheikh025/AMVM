@@ -51,7 +51,12 @@ def paired(device, policy, seed=0, fixed_mask=None, **kwargs):
         # The original threshold is absolute; minviol defaults to relative, which
         # would change acceptance decisions and so diverge the trajectory.
         improvement_tol=batched.EPSILON, relative_improvement=False,
-        single_variable_moves=False,   # the original engine has swaps only
+        # The original engine has swaps only, a uniformly random kick of fixed
+        # width, and no escalation. minviol's own defaults are none of those --
+        # they are tuned for general constraint systems -- so every one is pinned
+        # here rather than inherited.
+        single_variable_moves=False, swap_moves=True,
+        perturbation="random", kick_escalation=False,
         n_filters=100, candidate_tile=4096, destroy_rate=0.005,
         prune_first_stage=512, prune_stage_growth=4, prune_min_constraints=0,
     )
@@ -136,6 +141,7 @@ def test_nonuniform_per_instance_domains_match(device):
                 acceptance="linf", seed=9101)
     options = Options(acceptance="linf", improvement_tol=batched.EPSILON,
                       relative_improvement=False, single_variable_moves=False,
+                      swap_moves=True, perturbation="random", kick_escalation=False,
                       n_filters=100, candidate_tile=4096, prune_min_constraints=0)
     counters = Counters()
     active_old = torch.ones(old.n_rows, dtype=torch.bool, device=device)

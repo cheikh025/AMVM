@@ -270,18 +270,104 @@ def local_search(batch, active, options, counters, deadline=None, max_passes=100
     return batch
 
 
-def perturb(batch, active, destroy_rate):
+def kick_sizes(batch, destroy_rate, counts=None):
+    """How many variables each instance's kick moves, as ``(sizes, widest)``.
+
+    ``counts`` lets the caller widen the kick per instance; without it every
+    instance gets the same size, which is the original behaviour.
+    """
+    base = max(1, int(round(destroy_rate * batch.n_variables)))
+    if counts is None:
+        sizes = torch.full((batch.n_instances,), base, dtype=torch.long,
+                           device=batch.device)
+    else:
+        sizes = counts.clamp(1, batch.n_variables)
+    return sizes, int(sizes.max())
+
+
+def _chosen_mask(scores, sizes, widest):
+    """Top-``sizes[i]`` positions per instance, as indices plus a validity mask.
+
+    One ``topk`` at the widest size and a rank comparison, rather than a loop per
+    instance: the kick has to stay a handful of kernels however ragged the sizes
+    become.
+    """
+    chosen = scores.topk(widest, dim=1).indices
+    rank = torch.arange(widest, device=scores.device)[None, :]
+    return chosen, rank < sizes[:, None]
+
+
+def perturb(batch, active, destroy_rate, how="random", counts=None):
+    """Kick each active instance out of its local optimum.
+
+    ``how`` selects the kick: see ``Options.perturbation``. ``counts`` optionally
+    sets a per-instance kick size.
+    """
+    if how == "active":
+        return perturb_active(batch, active, destroy_rate, counts)
+    if how != "random":
+        raise ValueError(f"unknown perturbation {how!r}; expected 'random' or 'active'")
+    return perturb_random(batch, active, destroy_rate, counts)
+
+
+def perturb_active(batch, active, destroy_rate, counts=None):
+    """Move variables of the worst constraint, each the way that relieves it.
+
+    A blind kick is mostly wasted: the objective is the largest violation, so it
+    is decided by one constraint at a time, and moving variables that constraint
+    does not involve leaves it exactly where it was. This picks the worst
+    constraint per instance and pushes a random subset of *its* variables in the
+    direction that reduces it -- lowering ``a.x`` where the upper bound is
+    exceeded, raising it where the lower bound is missed.
+
+    The step is still one level and the subset is still random, so this changes
+    where the kick lands, not how hard it hits.
+    """
+    device = batch.device
+    v = batch.violation_of(batch.y)
+    worst = v.argmax(dim=0)                                  # (instances,)
+    row = batch.matrix.rows_of(worst)                        # (instances, variables)
+
+    # Which way relieves the constraint: over its upper bound, reduce a.x.
+    y_at = batch.y[worst, torch.arange(batch.n_instances, device=device)]
+    upper_at = batch.upper[worst, torch.arange(batch.n_instances, device=device)]
+    over = (y_at > upper_at)[:, None]
+    # Raising x_j raises a.x when a_j > 0. So to reduce a.x, step down where the
+    # coefficient is positive and up where it is negative; invert when under.
+    direction = torch.where(over, -row.sign(), row.sign()).long()
+
+    # A variable already at the end of its domain in the relieving direction
+    # cannot move, and picking one wastes the whole kick. With the default kick
+    # size of a single variable that is not a small loss: measured on a
+    # near-rank-deficient instance, the kick changed the objective by exactly
+    # 0.000 and none of 40 kicks was ever accepted.
+    assignable = (~batch.fixed_mask) & active[:, None] & (direction != 0)
+    scores = torch.rand(batch.x_idx.shape, generator=batch.generator, device=device)
+    scores = torch.where(assignable, scores, torch.full_like(scores, -1.0))
+    sizes, widest = kick_sizes(batch, destroy_rate, counts)
+    chosen, use = _chosen_mask(scores, sizes, widest)
+
+    current = torch.gather(batch.x_idx, 1, chosen)
+    step = torch.gather(direction, 1, chosen)
+    # A variable outside the constraint's support has no direction; leave it.
+    proposed = (current + step).clamp(0, batch.n_levels - 1)
+    proposed = torch.where(use & active[:, None], proposed, current)
+    batch.x_idx.scatter_(1, chosen, proposed)
+    batch.refresh()
+
+
+def perturb_random(batch, active, destroy_rate, counts=None):
     """Move a random subset of each active instance's variables by one level."""
     assignable = (~batch.fixed_mask) & active[:, None]
-    count = max(1, int(round(destroy_rate * batch.n_variables)))
     scores = torch.rand(batch.x_idx.shape, generator=batch.generator, device=batch.device)
     scores = torch.where(assignable, scores, torch.full_like(scores, -1.0))
-    chosen = scores.topk(count, dim=1).indices
+    sizes, widest = kick_sizes(batch, destroy_rate, counts)
+    chosen, use = _chosen_mask(scores, sizes, widest)
 
     steps = torch.randint(-1, 2, chosen.shape, generator=batch.generator,
                           device=batch.device)
     current = torch.gather(batch.x_idx, 1, chosen)
     proposed = (current + steps).clamp(0, batch.n_levels - 1)
-    proposed = torch.where(active[:, None], proposed, current)
+    proposed = torch.where(use & active[:, None], proposed, current)
     batch.x_idx.scatter_(1, chosen, proposed)
     batch.refresh()

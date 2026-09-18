@@ -47,15 +47,25 @@ def test_lower_above_upper_is_rejected_as_infeasible_not_solved():
         check_bounds(lower, upper)
 
 
-def test_l2_policies_are_refused_on_inequalities():
-    """The squared positive part is zero wherever a one-sided row holds, so the
-    tie-break would stop discriminating rather than merely weaken."""
+def test_the_l2_constraint_is_refused_on_inequalities_but_the_tiebreak_is_not():
+    """The two L2 policies differ in direction, and only one of them is unsafe.
+
+    `linf_l2_nonincrease` forbids moves on the strength of the sum of squares. On
+    a one-sided row that holds, the squared positive part is exactly zero, so
+    that quantity is measuring almost nothing and the policy only ever removes
+    moves. It stays equality-only.
+
+    `linf_l2_tiebreak` adds moves instead: it lets a candidate that leaves the
+    maximum where it was win on the sum of squares, which is how the search
+    crosses the plateau a maximum objective creates.
+    """
     check_policy("linf_l2_tiebreak", is_equality=True)
-    with pytest.raises(ValueError, match="only defined when every constraint"):
-        check_policy("linf_l2_tiebreak", is_equality=False)
+    check_policy("linf_l2_tiebreak", is_equality=False)
+    check_policy("linf", is_equality=False)
+
+    check_policy("linf_l2_nonincrease", is_equality=True)
     with pytest.raises(ValueError, match="only defined when every constraint"):
         check_policy("linf_l2_nonincrease", is_equality=False)
-    check_policy("linf", is_equality=False)
 
 
 def test_unknown_policy_is_rejected():

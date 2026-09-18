@@ -198,9 +198,23 @@ def _run(batch, budget, options, counters, started, feasibility_tol):
     active = torch.ones(batch.n_instances, dtype=torch.bool, device=device)
     deadline = started + budget.seconds
 
+    # How many kicks in a row have failed to beat the incumbent, per instance.
+    # Drives the kick width when escalation is on.
+    stall = torch.zeros(batch.n_instances, dtype=torch.long, device=device)
+
+    def kick_counts():
+        """Per-instance kick width, doubling with each run of failures."""
+        if not options.kick_escalation:
+            return None
+        base = max(1, int(round(options.destroy_rate * batch.n_variables)))
+        ceiling = max(base, int(options.kick_max_rate * batch.n_variables))
+        steps = (stall // max(1, options.kick_patience)).clamp(max=16)
+        return (base * torch.pow(2, steps)).clamp(max=ceiling)
+
     def settle():
         """Record improvements and freeze instances that have reached feasibility."""
         better = batch.objective < batch.best_objective
+        stall.copy_(torch.where(better, torch.zeros_like(stall), stall + 1))
         batch.best_x_idx[better] = batch.x_idx[better]
         batch.best_objective = torch.where(better, batch.objective, batch.best_objective)
         if budget.stop_when_feasible:
@@ -224,7 +238,8 @@ def _run(batch, budget, options, counters, started, feasibility_tol):
             break
         iterations += 1
         batch.x_idx = batch.best_x_idx.clone()
-        engine.perturb(batch, active, options.destroy_rate)
+        engine.perturb(batch, active, options.destroy_rate, options.perturbation,
+                       kick_counts())
         engine.local_search(batch, active, options, counters, deadline=deadline)
         alive = settle()
         counters.bump("iterations")

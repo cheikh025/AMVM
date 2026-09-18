@@ -59,6 +59,11 @@ def solve(inputs, weights, levels, B_k, seconds, acceptance_policy="linf_l2_noni
         # tuned around it. A relative one would change every acceptance decision.
         improvement_tol=batched.EPSILON, relative_improvement=False,
         single_variable_moves=SINGLE_VARIABLE_MOVES,
+        # Pinned to the original engine's search. minviol's own defaults are
+        # tuned for general constraint systems, which start nowhere in particular;
+        # a quantization row starts near round-to-nearest with its level histogram
+        # already right, which is the one setting where a swap is a strong move.
+        swap_moves=True, perturbation="random", kick_escalation=False,
         n_filters=n_filters, destroy_rate=destroy_rate, candidate_tile=candidate_tile,
         refresh_every=refresh_every, seed=seed,
         # Staged pruning is what the original does unconditionally on this path.

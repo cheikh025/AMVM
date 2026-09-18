@@ -122,35 +122,45 @@ launches rather than by arithmetic, so reading fewer constraints buys nothing. B
 passes together, the sparse backend is currently **slower end to end** than the
 dense one on these instances.
 
-### Turn swaps off on a general constraint system
+### The search is tuned for general constraint systems, not for quantization
 
-Swaps are not merely the slow move — on these systems they are the *worse* move,
-and turning them off is worth more than the choice of backend. Equal 5-second
-budgets, 3 seeds, median final violation from a cold start
-(`benchmarks/move_classes.py`):
+The defaults come from five keep/reject experiments recorded in
+`experiments/algo_memory.md`, each with its own artefact. Three were kept, two
+were reverted.
 
-| Density | Variant | Sparse | Dense |
-|---:|---|---:|---:|
-| 0.2% | moves + swaps | 5.69 | 3.12 |
-| 0.2% | **moves only** | **0.00** — feasible 2/3 | **0.00** — feasible 3/3 |
-| 0.2% | swaps only | 9.48 | 7.94 |
-| 1% | moves + swaps | 10.01 | 4.28 |
-| 1% | **moves only** | **3.49** — feasible 1/3 | **0.00** — feasible 2/3 |
-| 1% | swaps only | 16.26 | 13.01 |
+| # | Change | Verdict |
+|---|---|---|
+| 1 | Aim the kick at the worst constraint, in the direction that relieves it | **KEEP** — ratio 0.63 |
+| 2 | Let a move that leaves the maximum alone win on the tie-break | **KEEP** — tomography 47 → 3 |
+| 3 | Refuse to kick a variable that cannot move | revert — mechanism real, quality neutral |
+| 4 | Widen the kick while an instance stalls, snap back on success | **KEEP** — 13 better, 0 worse |
+| 5 | Escape by the single least damaging move | revert — 0 better, 21 worse |
 
-That is the difference between finding a feasible point and not. The engine came
-from quantization, where a solve starts near round-to-nearest with the level
-histogram already roughly right, and a swap is a strong move there. A general
-constraint system starts nowhere in particular, and swapping two variables' levels
-before either is in the right place mostly burns budget.
+Against the original swap-based search, over six instance families at equal time:
+**30 of 30 paired comparisons better, 0 worse**, with the feasibility count going
+from 0 of 30 to 17 of 30 and `tomography` from 46.0 to 3.0.
+
+The one-line summary of what was learned: **escape width dominates escape
+quality.** Aiming the kick was worth 37%, widening it was worth another 8% and
+three instances' worth of feasibility, and the single best-chosen escape move
+loses badly to a mediocre wide one.
+
+Swaps are off by default. A swap exchanges the levels of two variables, so it
+preserves the multiset of assigned levels — a strong move in quantization, where
+a solve starts near round-to-nearest with the histogram already right, and mostly
+wasted budget on a problem that starts nowhere in particular.
+
+For a quantization-shaped problem, ask for the opposite:
+
+```python
+minviol.Options(single_variable_moves=False, swap_moves=True,
+                perturbation="random", kick_escalation=False)
+```
 
 So, concretely:
 
-- **General constraint systems: `Options(swap_moves=False)`.** Faster and better.
 - **Dense above a few percent density**, sparse below it.
 - **Do not take the 35× as an end-to-end number.** It is the scoring kernel alone.
-- Leave swaps on for quantization-shaped problems, where the starting point is
-  already close and the histogram is right.
 
 `docs/sparse-design.md` records what would fix the swap pass, and the larger
 unclaimed win: a candidate can only improve if its column touches a

@@ -31,6 +31,10 @@ class DenseMatrix:
         """``A[:, cols]`` as ``(constraints, len(cols))``."""
         return self.A[:, cols]
 
+    def rows_of(self, constraints):
+        """``A[constraints, :]`` as ``(len(constraints), variables)``."""
+        return self.A[constraints]
+
     def apply_delta(self, y, instances, left, right, delta):
         """Add each instance's move to its column of ``y``, in place."""
         column = self.A[:, left]

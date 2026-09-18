@@ -80,7 +80,8 @@ def test_cold_start_descent_is_inert_without_single_variable_moves():
         before = float(batch.objective)
         engine.local_search(batch, torch.ones(1, dtype=torch.bool),
                             Opt(single_variable_moves=single_variable_moves,
-                                prune_min_constraints=0), Counters())
+                                swap_moves=True, prune_min_constraints=0),
+                            Counters())
         return before, float(batch.objective), int((batch.x_idx == 1).sum())
 
     before, swaps_only, swap_ones = descend(False)
@@ -165,6 +166,32 @@ def test_swaps_alone_still_work_where_they_suit_the_problem():
     batch = Batch(DenseMatrix(A), x0, domain[None, :], bounds, bounds)
     before = float(batch.objective)
     engine.local_search(batch, torch.ones(1, dtype=torch.bool),
-                        Opt(single_variable_moves=False, prune_min_constraints=0),
-                        Counters())
+                        Opt(single_variable_moves=False, swap_moves=True,
+                            prune_min_constraints=0), Counters())
     assert float(batch.objective) <= before
+
+
+def test_the_defaults_are_the_configuration_that_was_measured_best():
+    """Lock in what five experiments established, so it cannot drift back.
+
+    Each of these was a separate keep/reject decision with its own artefact in
+    experiments/algo_memory.md. Against the original swap-based search the
+    combination is 30 of 30 paired comparisons better, with the feasibility count
+    going from 0 of 30 to 17 of 30. A change here should be a deliberate
+    experiment, not a side effect.
+    """
+    defaults = Options()
+    assert defaults.single_variable_moves is True
+    assert defaults.swap_moves is False, "swaps lose on general constraint systems"
+    assert defaults.perturbation == "active", "experiment 1: aim the kick"
+    assert defaults.acceptance == "linf_l2_tiebreak", "experiment 2: cross plateaus"
+    assert defaults.kick_escalation is True, "experiment 4: widen a stalled kick"
+
+
+def test_a_quantization_shaped_configuration_is_still_reachable():
+    """The opposite settings must remain expressible; AMVM's adapter pins them."""
+    quantization = Options(single_variable_moves=False, swap_moves=True,
+                           perturbation="random", kick_escalation=False,
+                           acceptance="linf_l2_nonincrease")
+    assert quantization.swap_moves and not quantization.single_variable_moves
+    assert quantization.perturbation == "random"

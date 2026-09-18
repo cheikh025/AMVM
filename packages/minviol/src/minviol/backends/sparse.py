@@ -124,6 +124,13 @@ class SparseMatrix:
         # arithmetic is grouped exactly as the candidate's score was.
         y.index_put_((rows, instances[move]), delta[move] * accumulated, accumulate=True)
 
+    def rows_of(self, constraints):
+        """``A[constraints, :]`` densified as ``(len(constraints), variables)``.
+
+        One row per instance, so this is a thin block however large the matrix is.
+        """
+        return self.dense_rows(constraints)
+
     def dense_rows(self, rows):
         out = torch.zeros(len(rows), self.shape[1], device=self.device, dtype=self.dtype)
         position = torch.full((self.shape[0],), -1, dtype=torch.long, device=self.device)

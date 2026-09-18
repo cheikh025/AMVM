@@ -52,12 +52,16 @@ def test_contradictory_bounds_are_refused(tiny):
         minviol.solve(A, lower, upper, domain=domain, budget=Budget(seconds=0.0))
 
 
-def test_l2_policy_on_inequalities_is_refused(tiny):
+def test_the_l2_constraint_on_inequalities_is_refused(tiny):
+    """Only the constraining policy; the tie-break is allowed and useful there."""
     A, domain = tiny
     with pytest.raises(ValueError, match="only defined when every constraint"):
         minviol.solve(A, None, torch.zeros(3), domain=domain,
                       options=Options(acceptance="linf_l2_nonincrease"),
                       budget=Budget(seconds=0.0))
+    minviol.solve(A, None, torch.zeros(3), domain=domain,
+                  options=Options(acceptance="linf_l2_tiebreak"),
+                  budget=Budget(seconds=0.0))
 
 
 def test_given_init_without_a_point_is_refused(tiny):

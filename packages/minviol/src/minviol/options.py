@@ -55,11 +55,24 @@ class Budget:
 
 @dataclass(frozen=True)
 class Options:
-    """Search and kernel-sizing knobs."""
+    """Search and kernel-sizing knobs.
+
+    The defaults are the configuration measured best for general constraint
+    systems in `experiments/algo_memory.md`: single-variable moves only, a kick
+    aimed at the worst constraint that widens while an instance stalls, and an
+    acceptance rule that lets a move which leaves the maximum alone win on the
+    tie-break. Against the original swap-based search that is 30 of 30 paired
+    comparisons better, with the feasibility count going from 0 of 30 to 17 of 30.
+
+    A quantization-shaped problem wants the opposite of most of this -- it starts
+    near round-to-nearest with the level histogram already right, which is where a
+    swap is a strong move. Set `swap_moves=True` and `perturbation="random"` for
+    that; `src/GPU/ALNS/minviol_engine.py` in the AMVM repository does exactly so.
+    """
 
     # Acceptance. "linf" is the only policy defined for general bounds; the two
     # L2 policies are equality-mode features (see violation.py).
-    acceptance: str = "linf"
+    acceptance: str = "linf_l2_tiebreak"
 
     # A move counts as an improvement when it beats the incumbent by more than
     # this. Relative is right for a library, where the objective's scale is the
@@ -78,6 +91,27 @@ class Options:
     # Perturbation strength, as a fraction of the variables.
     destroy_rate: float = 0.005
 
+    # How the search kicks itself out of a local optimum.
+    #   "random" -- move a random subset of variables by one level, in a random
+    #               direction. The original engine's perturbation.
+    #   "active" -- move a random subset of the variables appearing in the
+    #               currently worst constraint, each in the direction that
+    #               relieves that constraint.
+    # The objective is a maximum, so it is attained at one constraint at a time;
+    # a kick that misses that constraint cannot change the objective, and with n
+    # variables a blind kick misses it with probability 1 - |support|/n.
+    perturbation: str = "active"
+
+    # Widen the kick while an instance keeps failing to beat its incumbent, and
+    # snap back as soon as it succeeds. A fixed one-variable kick is undone by
+    # the descent every time on some instances -- measured at 0 accepted out of
+    # 40 -- and no choice of which variable fixes that; the basin is simply wider
+    # than the kick. The schedule doubles the kick every `kick_patience`
+    # consecutive failures, up to `kick_max_rate` of the variables.
+    kick_escalation: bool = True
+    kick_patience: int = 5
+    kick_max_rate: float = 0.25
+
     # Run the single-variable descent alongside swaps. Swaps alone preserve the
     # multiset of assigned levels, so a swap-only search cannot leave a point
     # whose level histogram is wrong -- which is exactly the cold start. Off only
@@ -89,7 +123,7 @@ class Options:
     # is the quantization case. It is also the expensive move for a sparse matrix,
     # since each candidate touches two columns and the pass is bound by kernel
     # launches rather than by arithmetic -- see docs/sparse-design.md.
-    swap_moves: bool = True
+    swap_moves: bool = False
 
     # Candidate block of the exact stage: constraints x tile floats.
     candidate_tile: int = 4096

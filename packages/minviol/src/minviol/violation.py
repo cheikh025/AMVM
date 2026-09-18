@@ -25,13 +25,16 @@ LINF_L2_NONINCREASE = "linf_l2_nonincrease"
 
 POLICIES = (LINF, LINF_L2_TIEBREAK, LINF_L2_NONINCREASE)
 
-# The two L2 policies are only defined when every row is an equality. On a
-# one-sided row that is currently satisfied the positive part is exactly zero,
-# so the sum of squares stops discriminating between candidates as soon as most
-# rows are satisfied, and the tie-break degenerates to noise on the few violated
-# ones. Under lower == upper it is a full signal, which is why the quantization
-# work never met this.
-EQUALITY_ONLY_POLICIES = (LINF_L2_TIEBREAK, LINF_L2_NONINCREASE)
+# `linf_l2_nonincrease` constrains an accepted move to not raise the sum of
+# squares. On a one-sided row that is currently satisfied the positive part is
+# exactly zero, so that constraint is measuring almost nothing once most rows
+# hold, and it only ever removes moves. It stays equality-only.
+#
+# `linf_l2_tiebreak` is the opposite: it *adds* moves, by letting a candidate
+# that leaves the maximum where it was win on the sum of squares. That is how a
+# search crosses the plateau a maximum objective creates, and refusing it on
+# inequalities was measured to cost more than it saved -- see experiment 2.
+EQUALITY_ONLY_POLICIES = (LINF_L2_NONINCREASE,)
 
 
 def violation(y, lower, upper):
@@ -51,8 +54,9 @@ def check_policy(policy: str, is_equality: bool) -> None:
         raise ValueError(
             f"Acceptance policy {policy!r} is only defined when every constraint is an "
             "equality (lower == upper). On a one-sided constraint the squared positive "
-            "part is zero wherever the constraint holds, so the L2 term stops "
-            "discriminating. Use 'linf'."
+            "part is zero wherever the constraint holds, so this policy would forbid "
+            "moves on the strength of a quantity that is measuring nothing. Use 'linf' "
+            "or 'linf_l2_tiebreak'."
         )
 
 
