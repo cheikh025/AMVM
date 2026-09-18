@@ -31,6 +31,16 @@ from minviol import Budget, Options                # noqa: E402
 
 import instances                                   # noqa: E402
 
+# The search as it stood before any experiment in the ledger: a uniformly random
+# kick, strict-improvement acceptance, no escalation. Experiments 1, 2 and 4 won
+# and became package defaults, so a variant that overrides only the move classes
+# now *inherits* those wins -- `moves-only` and `best` are byte-identical, and the
+# documented baseline command reports 24 of 24 tied. Pinning the old settings
+# explicitly is what keeps the ledger's baseline column reproducible; see the
+# "Stale baseline labels" note in experiments/algo_memory.md.
+PRE_EXPERIMENT = {"perturbation": "random", "acceptance": "linf",
+                  "kick_escalation": False}
+
 # Named variants. Each is a set of Options overrides applied to the package
 # defaults. "moves-only" is the incumbent for general constraint systems: swaps
 # were measured to be both slower and worse there.
@@ -43,6 +53,14 @@ VARIANTS = {
     # run-to-run variance is how many iterations fit in the wall-clock budget;
     # running an identical variant against itself is how that is measured.
     "moves-only-copy": {"swap_moves": False, "single_variable_moves": True},
+
+    # The two historical baselines, pinned. `original-moves-only` is the column
+    # the ledger's baseline table calls "moves-only (original)";
+    # `original-search` is the swap-based search the whole package replaced.
+    "original-moves-only": {"swap_moves": False, "single_variable_moves": True,
+                            **PRE_EXPERIMENT},
+    "original-search": {"swap_moves": True, "single_variable_moves": True,
+                        **PRE_EXPERIMENT},
 
     # Experiment 1: kick the variables of the worst constraint, in the direction
     # that relieves it, instead of a uniformly random subset in a random direction.
@@ -81,6 +99,24 @@ VARIANTS = {
     # sum of squares, so the search can cross the plateau a maximum creates.
     "tiebreak": {"swap_moves": False, "single_variable_moves": True,
                  "perturbation": "active", "acceptance": "linf_l2_tiebreak"},
+
+    # Experiment 8: settle ties on a higher power of the violation. The sum stays
+    # over every constraint -- a fixed set, so still a potential function -- while
+    # a larger power concentrates it on the worst constraints, approaching the
+    # lexicographic order on the sorted violation vector. `power2` is a pinned
+    # duplicate of `best`, as the control.
+    "power2": {"swap_moves": False, "single_variable_moves": True,
+               "perturbation": "active", "acceptance": "linf_l2_tiebreak",
+               "kick_escalation": True, "tiebreak_power": 2.0},
+    "power4": {"swap_moves": False, "single_variable_moves": True,
+               "perturbation": "active", "acceptance": "linf_l2_tiebreak",
+               "kick_escalation": True, "tiebreak_power": 4.0},
+    "power8": {"swap_moves": False, "single_variable_moves": True,
+               "perturbation": "active", "acceptance": "linf_l2_tiebreak",
+               "kick_escalation": True, "tiebreak_power": 8.0},
+    "power16": {"swap_moves": False, "single_variable_moves": True,
+                "perturbation": "active", "acceptance": "linf_l2_tiebreak",
+                "kick_escalation": True, "tiebreak_power": 16.0},
 }
 
 
