@@ -229,7 +229,11 @@ much. Worth deciding deliberately rather than discovering in a run.
 | A1 settled-pass skip | merge, on by default | 0 of 36 paired rows worse at equal time |
 | A3 device-resident swap | merge, on by default | identical selection; synchronizations 421 to 155 |
 | A4 budget-derived row tile | merge, on by default | identical objective; operations 46,900 to 5,200 |
-| A6 incumbent pruning | merge behind a flag, off | best at equal time on all three layers, but inside noise on narrow ones |
+| A6 incumbent pruning | ON by default since 2026-09-18, paired with residual ordering | alone it is 0.84x and 0.79x, i.e. slower than no pruning, on the narrow layers |
+| Residual-ordered rows | merge, on by default | exact on real layers; 1.25x, 1.39x, 1.65x over no pruning; no paired row worse |
+| Local-search deadline | merge, on by default | one 10s solve had been running 180s+ under the tie-break policy |
+| Acceptance policy | keep `linf_l2_nonincrease` | no policy wins everywhere; removing the gate buys iterations and loses quality |
+| Budget split across replicas | do not implement | worse or neutral everywhere; +24% on fc2 at five replicas |
 | A7 Gram-matrix L2 | do not implement yet | the term it removes is 10% of the stage it runs in |
 | A5 transposed activations | do not implement yet | gathers are not the bottleneck here, and a second copy is 3.2 GB |
 | Tier B batched rows | merge behind a flag, off | parity at equal time on this device |

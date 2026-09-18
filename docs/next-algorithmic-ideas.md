@@ -1,5 +1,16 @@
 # Where the remaining gap is, and what to try next
 
+> **Status, 2026-09-18.** All three Tier 1 ideas below have now been tested; see
+> `experiments/algo_memory.md` entries 10 to 13 for the measurements.
+> Idea 2 (working set) **kept**, in the simpler form of ordering the pruned
+> stage's rows by residual magnitude: exact, 1.25x to 1.65x, and it overturns the
+> earlier decision to leave incumbent pruning off. Idea 1 (acceptance policy)
+> **refuted**: the sum-of-squares gate is not strangling the search, and the
+> default stays. Idea 3 (replicas) **refuted**: splitting the budget is worse or
+> neutral everywhere and ruinous on fc2. A defect found along the way, a descent
+> that ignored the solve's time budget, is fixed.
+
+
 Written after the acceleration work merged. Everything here rests on two
 measurements that had not been taken before: what a solved row actually looks
 like, and how much the objective is still moving after the production budget

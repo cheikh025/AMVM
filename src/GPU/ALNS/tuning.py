@@ -46,12 +46,17 @@ SKIP_SETTLED_LOCAL_SEARCH = _flag("AMVM_SKIP_SETTLED_LOCAL_SEARCH", True)
 DEVICE_RESIDENT_SWAP = _flag("AMVM_DEVICE_RESIDENT_SWAP", True)
 
 # A6: stop evaluating a candidate once its running maximum has passed the best
-# candidate found so far. Selection needs the smallest maximum, so a candidate
+# candidate found so far. On by default only in company with RESIDUAL_ORDERED_ROWS:
+# on its own, pruning was measured SLOWER than not pruning on the narrow layers
+# (0.84x on q_proj, 0.79x on fc1), because in index order a partial maximum stays
+# far below the bound and almost nothing is dropped. The two together are
+# 1.25x to 1.65x faster than no pruning. Turning this off without also turning off
+# the ordering is a configuration nobody measured as good. Selection needs the smallest maximum, so a candidate
 # whose partial maximum is already larger can never win and never needs its
 # remaining rows. Pruning against the acceptance bound instead was measured and
 # discarded: nearly every screening survivor stays under that bound, so it drops
 # almost nothing.
-PRUNE_TO_INCUMBENT = _flag("AMVM_PRUNE_TO_INCUMBENT", False)
+PRUNE_TO_INCUMBENT = _flag("AMVM_PRUNE_TO_INCUMBENT", True)
 
 # Stop a local-search descent when the solver's own time budget has expired. The
 # descent loops until it finds no improving move, and nothing inside it consults
@@ -70,7 +75,7 @@ LOCAL_SEARCH_DEADLINE = _flag("AMVM_LOCAL_SEARCH_DEADLINE", True)
 # which is what pruning needs to drop candidates early. Selection is unchanged: a
 # maximum does not depend on the order it is accumulated in. Only meaningful with
 # PRUNE_TO_INCUMBENT, since without pruning every row is visited regardless.
-RESIDUAL_ORDERED_ROWS = _flag("AMVM_RESIDUAL_ORDERED_ROWS", False)
+RESIDUAL_ORDERED_ROWS = _flag("AMVM_RESIDUAL_ORDERED_ROWS", True)
 
 # Rows in the first pruning stage. Later stages grow as candidates die, holding
 # the intermediate tensor near the memory budget.
