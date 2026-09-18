@@ -21,7 +21,8 @@ class Batch:
     """Current point, bounds and cached objective for a batch of instances."""
 
     def __init__(self, matrix, x_idx, domain, lower, upper, *, row_scale=None,
-                 fixed_mask=None, acceptance=viol.LINF, seed=9101):
+                 fixed_mask=None, acceptance=viol.LINF, tiebreak_power=2.0,
+                 seed=9101):
         self.matrix = matrix
         self.device = matrix.device
         self.dtype = matrix.dtype
@@ -38,6 +39,12 @@ class Batch:
         self.upper = upper
         self.row_scale = row_scale
         self.acceptance = acceptance
+        self.tiebreak_power = float(tiebreak_power)
+        # Fixed for the solve, set from the starting point. A high power needs the
+        # violations brought into the accumulator's range, and a scale that
+        # tracked the point would make the tie-break a different function on every
+        # step -- which is the defect experiment 7 died of, by another route.
+        self.tiebreak_scale = None
 
         self.generator = torch.Generator(device=self.device).manual_seed(seed)
         self.fixed_mask = (torch.zeros_like(self.x_idx, dtype=torch.bool)
@@ -66,7 +73,11 @@ class Batch:
     def _refresh_caches(self):
         v = self.violation_of(self.y)
         self.objective = v.max(dim=0).values
-        self.l2 = v.square().sum(dim=0)
+        if self.tiebreak_power != 2.0 and self.tiebreak_scale is None:
+            # Once, from the starting point, and never again.
+            self.tiebreak_scale = self.objective.clamp_min(1e-12).clone()
+        self.l2 = viol.tiebreak_terms(v, self.tiebreak_power,
+                                      self.tiebreak_scale).sum(dim=0)
 
     def refresh(self):
         """Rebuild every cache from scratch.

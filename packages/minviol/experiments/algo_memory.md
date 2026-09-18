@@ -97,6 +97,45 @@ a failure to reach it is a statement about the search.
 - **Never time in blocks.** Alternate variants within each repetition.
 - The first baseline taken in this session was polluted by the above and read
   20-40% better than the truth. Numbers below are from the fixed harness.
+- **Stale baseline labels.** A harness variant that overrides only the knobs an
+  experiment is about *inherits every default underneath it* — so when a winning
+  experiment becomes a default, the variant that used to be the baseline silently
+  becomes the incumbent. Experiments 1, 2 and 4 made that happen here:
+  `--variants moves-only best`, the command this file documents, reports **24 of
+  24 tied**, because after those defaults landed the two labels name the same
+  configuration. Nothing is wrong with the solver and nothing is wrong with the
+  numbers; the command just stopped asking the question it was written to ask,
+  and it fails silently, in the flattering direction — a variant compared against
+  itself never regresses. The pre-experiment settings are now pinned explicitly
+  as `original-moves-only` and `original-search` in `bench_moves.py`. Use those
+  for any claim against the historical baseline.
+
+## Reproduction on a second machine, 2026-09-18
+
+Everything above entry 7 was measured on Apple Silicon with the MPS backend. The
+whole ledger reproduces on CPU/Linux under PyTorch 2.14, which is worth recording
+because a move-class result that only holds on one backend would not be a result
+about the move class:
+
+| Instance | `original-moves-only` | `best` | MPS `original` |
+|---|---:|---:|---:|
+| dense-ineq | 39.9990 | **15.9621** | 33.0993 |
+| equality | 30.1542 | **0.0000** (2/3) | 34.0321 |
+| ill-cond | 3.2255 | **2.9741** | 3.3422 |
+| sparse-ineq | 7.0531 | **0.0000** (3/3) | 7.0531 |
+| tomography | 46.0000 | **3.0000** | 47.0000 |
+| two-sided | 29.6542 | **0.0000** (2/3) | 33.5321 |
+
+**23 of 24 pairs better, 0 worse, median ratio 0.0217.** `sparse-ineq` and
+`tomography` land on their MPS values exactly; the dense instances differ in the
+third figure, as float summation order over a different backend should.
+
+The instance set is eight, not six: `binary-dense` and `binary-sparse` were added
+with experiment 6, so paired counts after that entry are out of 24 rather than 18.
+
+**Hardware:** x86-64 Linux, CPU, PyTorch 2.14
+**Artefacts:** `experiments/results/baseline_cpu_linux.json`,
+`reverify_cpu_linux.json` (the latter is the 24-of-24-tied run above)
 
 ## Baseline (`best` = moves-only + active kick + tie-break, 75 iterations, 3 trials, MPS)
 
@@ -148,8 +187,14 @@ changed nothing. Ranked by what they bought:
 | Where the kick lands | 1 | ratio 0.629 |
 | How wide the kick is | 4 | 13 better / 0 worse, +3 instances feasible |
 | Whether a plateau can be crossed | 2 | tomography 47 -> 3 |
+| How finely a plateau is ranked | 8 | tomography 3 -> 2 |
 | Whether the kick is legal | 3 | neutral |
 | How good the single escape move is | 5 | 0 better / 21 worse |
+
+Experiments 6 and 8 add a second axis to that. Once the escape is wide enough, what
+is left is not depth — `ill-cond` is 2-opt optimal against all 73,152 of its pairs
+— but *resolution*: whether the search can tell two candidates apart at all. Both
+of the entries that moved `tomography` are rankings, not moves.
 
 ### Still open
 
@@ -160,15 +205,43 @@ changed nothing. Ranked by what they bought:
   wider kick of single moves. Experiment 5 tried the cheap version of this (one
   move plus the following descent) and it failed for want of width; the real
   version enumerates pairs and was not attempted.
+
+  **Closed by experiment 6.** The pairs were enumerated, exhaustively: all 73,152
+  of them on `ill-cond`, and none improves it. It is a 2-opt local optimum, not a
+  1-opt one, so depth is not what it is short of. What is left to try on these two
+  is a different *start*, not a different neighbourhood.
 - The tie-break is the sum of squares over all constraints. For a minimax
   objective the natural quantity is the sorted violation vector compared
   lexicographically, or the sum over the top-K. The cheap surrogate won on
   tomography; the proper one is untested.
 
+  **Closed by experiment 8.** The top-K form is refuted (experiment 7: not a
+  potential function). The lexicographic form was reached by raising the power
+  rather than sorting — `sum v^p` is the same quantity in the limit, keeps the
+  sum over a fixed set, and costs one exponent. It does hide signal: `tomography`
+  goes 3 -> 2, and the incumbent does not reach 2 at four times the budget. It is
+  also **bounded by float resolution, not by cost**, which is the opposite of what
+  this note assumed: past p=32 the small terms underflow, the tie-break stops
+  discriminating and the search degrades to worse than the incumbent.
+
+### Still open, after experiments 6 and 8
+
+- Both remaining hard instances are now known to be 2-opt optimal *from where the
+  search puts them*. Nothing about the neighbourhood or the acceptance rule has
+  moved them. The untried axis is the starting point — `init="zero"` on every
+  instance here — and, for `ill-cond` specifically, whether a near rank-deficient
+  system wants the residual scaled per row before any of this runs.
+- A tie-break that is exactly lexicographic on the sorted vector remains untested
+  *as such*. Experiment 8 bounds what it could buy — the power form already
+  reaches the interior optimum, and the instance set has only one instance where
+  ties occur at all. A second tie-heavy instance would be worth more than a better
+  tie-break.
+
 ## Running summary
 
 | # | Date | Title | Layer | Decision | Median ratio | Paired | Notes |
 |---|---|---|---|---|---|---|---|
+| 8 | 2026-09-18 | Settle ties on a higher power of the violation | Evaluator | **KEEP** behind a flag, default off | 1.000 | 2 better / 0 worse | tomography 3 -> 2, a value the incumbent misses at 4x the budget; inert where ties do not occur, and it costs ~7% there |
 | 7 | 2026-09-18 | Settle ties on the worst constraints | Evaluator | **REVERT** | 1.000 | 0 better / 12 worse | a tie-break must be a potential function; this one is not |
 | 6 | 2026-09-18 | A genuine compound two-variable move | Search | **REVERT** (flag kept, default off) | 1.000 | 3 better / 8 worse | ill-cond is 2-opt optimal, exhaustively |
 | 5 | 2026-09-18 | Escape by the least damaging move | Search | **REVERT** | 1.108 | 0 better / 21 worse | deterministic escape cycles; sampling it does not save it |
@@ -176,6 +249,146 @@ changed nothing. Ranked by what they bought:
 | 3 | 2026-09-18 | Refuse to kick a variable that cannot move | Search | **REVERT** | 1.000 | 4 better / 5 worse | mechanism real, quality neutral; kick strength is the binding constraint |
 | 2 | 2026-09-18 | Let a neutral move win on the tie-break | Evaluator | **KEEP** (specialist) | 1.000 | 4 better / 2 worse | tomography 44.0 -> 3.0, rest tied |
 | 1 | 2026-09-18 | Kick the worst constraint, not a random subset | Search | **KEEP** | 0.771 | 14 better / 1 worse | sparse-ineq 7.05 -> 0.00, feasible 3/3 |
+
+---
+
+## Experiment 8: Settle ties on a higher power of the violation
+
+**Date:** 2026-09-18 · **Idea layer:** Evaluator / acceptance · **Decision:** KEEP
+behind `tiebreak_power`, default 2 (unchanged).
+
+### Observation that prompted it
+
+Experiment 7 wanted the tie-break to look where the objective lives — the worst
+constraints — and broke the search, because a set recomputed from the current
+point is not a fixed set and the sum over it is not a potential function. It left
+the underlying question open: the sum of squares is a *surrogate* for what a
+minimax objective wants, which is the sorted violation vector compared
+lexicographically. Is the incumbent ranking hiding signal, or was the surrogate
+already enough?
+
+### Idea card
+
+Reach the lexicographic ordering by raising the exponent instead of sorting.
+Settle ties on `sum_i (v_i / s)^p` over **every** constraint, with `s` a constant
+of the solve.
+
+- At `p=2` this is the incumbent, bit for bit.
+- As `p` grows the sum is dominated by the largest violations, so the ordering
+  approaches the lexicographic one on the sorted vector.
+- At every finite `p` the sum is still over a fixed set, so it is still a
+  potential function and experiment 7's failure cannot recur.
+- It is additive over constraints for any `p`, so the sparse backend's
+  incremental correction — carry the incumbent's value, fix only the touched
+  rows — survives unchanged.
+
+Cost is one exponent. No sort, no top-K, no second pass.
+
+**Hypothesis:** if the surrogate is hiding signal, `tomography` — the one instance
+where ties dominate — improves, and the tie-free instances do not move.
+
+### Implementation surface
+
+- `src/minviol/violation.py`: `tiebreak_terms`, and `check_policy` refuses a power
+  other than 2 under `linf_l2_nonincrease`, which is a constraint on the L2 norm
+  rather than a tie-break and only shares the cache
+- `src/minviol/problem.py`: `tiebreak_power`, and `tiebreak_scale` fixed once from
+  the starting point
+- `src/minviol/backends/{dense,sparse}.py`: the two places the terms are summed
+- `tests/test_tiebreak_power.py` · ~60 lines
+
+`s` exists only to keep a high power inside the accumulator's range. It is set
+once and never updated, because a scale that tracked the point would make the
+tie-break a different function on every step — experiment 7's defect by another
+route. At `p=2` it is not applied at all, so the control is exact.
+
+### Results
+
+75 iterations, 3 trials, CPU. `power2` against `best` ties on 16 of 16, which is
+what says the rest is the power and not the rewrite.
+
+| Instance | `best` | `power4` | moves, best → p4 | wall ratio |
+|---|---:|---:|---|---:|
+| binary-dense | 0.0000 (3/3) | 0.0000 (3/3) | 79 → 79 | 1.06 |
+| binary-sparse | 0.0000 (3/3) | 0.0000 (3/3) | 129 → 131 | 1.07 |
+| dense-ineq | 15.9621 | 15.9621 | 205 → 205 | 1.04 |
+| equality | 0.0000 (2/3) | 0.0000 (2/3) | 233 → 233 | 1.16 |
+| ill-cond | 2.9741 | 2.9741 | 103 → 103 | 1.07 |
+| sparse-ineq | 0.0000 (3/3) | 0.0000 (3/3) | 206 → 220 | 1.06 |
+| tomography | 3.0000 | **2.0000** | 1444 → 3100 | 2.32 |
+| two-sided | 0.0000 (2/3) | 0.0000 (2/3) | 233 → 233 | 1.07 |
+
+**2 better, 0 worse, 22 tied**, median ratio 1.0000, identically at p=4, 8 and 16.
+
+The gain is not a longer budget in disguise. `best` does not reach 2.0 at any
+budget tried — 3.0000 at 75, 150, 200 and 300 iterations, the last of which is
+33.2s — while `power4` reaches 2.0 in **10 iterations, 4.1s**.
+
+Sweeping the power on `tomography` finds an interior optimum and then a collapse:
+
+| p | 2 | 4 | 8 | 16 | 32 | 64 | 128 |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| violation | 3.00 | **2.00** | **2.00** | **2.00** | 3.00 | 10.00 | 23.00 |
+| moves applied | 1444 | 3100 | 3134 | 3575 | 2483 | 253 | 140 |
+
+### Analysis
+
+**Where it wins, and why.** On five of eight instances the move count is
+*identical* — 79, 205, 103, 233, 233 — so the raised power changed nothing
+whatsoever. That is experiment 7's finding again from the other side: those
+instances have continuous constraint values and essentially never tie, so there
+is nothing for any tie-break to do. All of the signal is on `tomography`, whose
+integer data makes exact ties the normal case, and there the sum of squares was
+calling candidates tied that the sorted vector separates. Given the finer
+ordering the plateau walk goes 1444 moves → 3100 and arrives somewhere the
+incumbent cannot reach.
+
+**The contrast with experiment 7 is the whole point.** Both variants applied far
+more moves than the incumbent. Experiment 7 applied 530 and completed **zero**
+iterations — it never left the first descent. This one applies 3100 and completes
+all 75. Same symptom, opposite outcome, and the difference is exactly the property
+that separates them: this quantity is a potential function, so the walk has to
+terminate, and the extra moves are progress rather than a cycle.
+
+**What bounds it is arithmetic, not cost.** The lexicographic ideal is `p → ∞`,
+and the sweep shows that limit is unreachable by this route: past p=32 the terms
+from small violations underflow against the sum, the tie-break stops
+discriminating, and the search degenerates towards plain `linf` — 140 moves at
+p=128, fewer than the incumbent's 1444, for a violation of 23. The failure is not
+graceful. This is worth stating plainly because experiment 7 predicted the proper
+tie-break would be bounded by *expense*; it is not expensive at all, and the real
+ceiling is float32's dynamic range.
+
+**Why it is not the default.** It does not clear either clause of the decision
+rule: the median ratio is 1.0000, and 3.0 → 2.0 is 1.5x, under clause 2's 2x bar.
+Set against that, it regresses nothing, the mechanism is understood, and the value
+it reaches is one the incumbent misses at four times the budget. What settles it
+is the cost profile: on the five instances where it provably changes *nothing* it
+still costs 4-16% wall, because the exponent is paid on every candidate whether or
+not a tie is ever broken. Paying that everywhere to win on the one instance class
+that ties is the wrong default for a library. It is kept as a flag, tested and
+free when off, on the precedent of `compound_moves` (entry 6) and the AMVM
+ledger's `PRUNE_TO_INCUMBENT` — and a caller solving integer or structured systems,
+where ties are the rule rather than the exception, should set `tiebreak_power=4`.
+
+### Lessons
+
+- The cheap surrogate was hiding signal, and one exponent was enough to find it.
+  Before building the expensive exact version of a ranking, check whether a
+  continuous parameter reaches the same limit — `sum v^p` is the sorted vector as
+  `p → ∞` and costs nothing to try.
+- A limit that is correct in exact arithmetic can be unreachable in float, and
+  degrade *below* the starting point on the way. Sweep the parameter to the point
+  of collapse; the interior optimum is not something to assume.
+- Five of eight instances could not tell any of these tie-breaks apart. Two
+  experiments have now spent themselves on a phenomenon that occurs on one
+  instance of the set. The instance set is the binding constraint on what can be
+  learned here, not the ideas.
+
+### Artefacts
+
+- `experiments/results/exp08_power{4,8,16}.json`
+- `src/minviol/violation.py:tiebreak_terms`, `tests/test_tiebreak_power.py`
 
 ---
 

@@ -124,9 +124,9 @@ dense one on these instances.
 
 ### The search is tuned for general constraint systems, not for quantization
 
-The defaults come from five keep/reject experiments recorded in
-`experiments/algo_memory.md`, each with its own artefact. Three were kept, two
-were reverted.
+The defaults come from eight keep/reject experiments recorded in
+`experiments/algo_memory.md`, each with its own artefact. Three became defaults,
+two are kept as flags that default off, and three were reverted outright.
 
 | # | Change | Verdict |
 |---|---|---|
@@ -135,6 +135,9 @@ were reverted.
 | 3 | Refuse to kick a variable that cannot move | revert — mechanism real, quality neutral |
 | 4 | Widen the kick while an instance stalls, snap back on success | **KEEP** — 13 better, 0 worse |
 | 5 | Escape by the single least damaging move | revert — 0 better, 21 worse |
+| 6 | Move two variables at once, with independent steps | flag, off — no pair improves the stuck instances |
+| 7 | Settle ties on the worst constraints | revert — 0 better, 12 worse; not a potential function |
+| 8 | Settle ties on a higher power of the violation | flag, off — tomography 3 → 2, but it costs where nothing ties |
 
 Against the original swap-based search, over six instance families at equal time:
 **30 of 30 paired comparisons better, 0 worse**, with the feasibility count going
@@ -144,6 +147,11 @@ The one-line summary of what was learned: **escape width dominates escape
 quality.** Aiming the kick was worth 37%, widening it was worth another 8% and
 three instances' worth of feasibility, and the single best-chosen escape move
 loses badly to a mediocre wide one.
+
+Once the escape is wide enough, what is left is resolution rather than depth. The
+two instances that never reach feasibility are local optima against *every* pair
+of variables, not just every single one — so a deeper neighbourhood is not what
+they want. Both entries that moved `tomography` are rankings, not moves.
 
 Swaps are off by default. A swap exchanges the levels of two variables, so it
 preserves the multiset of assigned levels — a strong move in quantization, where

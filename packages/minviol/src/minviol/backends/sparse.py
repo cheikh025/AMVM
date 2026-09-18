@@ -344,8 +344,13 @@ class SparseMatrix:
                                  device=self.device)
         touched_max.scatter_reduce_(0, cand, v_new, reduce="amax", include_self=True)
 
-        # The untouched constraints keep their squares, so the sum only has to be
-        # corrected where the point actually changed.
+        # The untouched constraints keep their terms, so the sum only has to be
+        # corrected where the point actually changed. This works for any power
+        # because the tie-break is a sum over constraints, hence additive.
+        power = batch.tiebreak_power
+        scale = (None if batch.tiebreak_scale is None
+                 else batch.tiebreak_scale[instance])
         delta_l2 = torch.zeros(n_candidates, dtype=self.dtype, device=self.device)
-        delta_l2.scatter_add_(0, cand, v_new.square() - v_old.square())
+        delta_l2.scatter_add_(0, cand, viol.tiebreak_terms(v_new, power, scale)
+                              - viol.tiebreak_terms(v_old, power, scale))
         return touched_max, delta_l2

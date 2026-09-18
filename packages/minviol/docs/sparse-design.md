@@ -130,6 +130,14 @@ l2_new = l2_old + sum over S of (v_new^2 - v_old^2)
 
 Exact, and proportional to `nnz`.
 
+The square is not what makes this work — additivity over constraints is. The
+tie-break is `sum_i (v_i/s)^p` for a fixed `p` and a scale `s` that is constant
+for the solve (`Options.tiebreak_power`), and the same correction holds verbatim
+with `^p` in place of `^2`. What a tie-break may *not* be is a sum over a set that
+moves with the point: that breaks the incremental form here and, more seriously,
+stops the quantity being a potential function, so a plateau walk need not
+terminate. Experiment 7 in `experiments/algo_memory.md` measured exactly that.
+
 ## No screening stage
 
 Screening exists to keep candidates away from a full pass over every constraint.

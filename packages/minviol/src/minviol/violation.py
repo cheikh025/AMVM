@@ -46,10 +46,53 @@ def violation(y, lower, upper):
     return torch.maximum((lower - y).clamp_min(0), (y - upper).clamp_min(0))
 
 
-def check_policy(policy: str, is_equality: bool) -> None:
+def tiebreak_terms(v, power, scale=None):
+    """Per-constraint terms of the tie-break quantity, summed by the caller.
+
+    The tie-break is ``sum_i (v_i / scale) ** power`` over *every* constraint.
+    Two properties earn their keep:
+
+    **It is a sum over a fixed set**, which is what makes it a potential function
+    and so what makes a plateau walk terminate. Summing over the worst
+    constraints instead -- a set recomputed from the current point -- was measured
+    and cycles; see experiment 7.
+
+    **It is additive over constraints**, so the sparse backend can carry the
+    incumbent's value and correct it only on the constraints a candidate touches.
+    That holds for any power, not just two.
+
+    ``power`` interpolates between the two natural choices. At 2 it is the sum of
+    squares. As it grows the sum is dominated by the largest violations, so the
+    ordering approaches the lexicographic one on the sorted violation vector,
+    which is the quantity a minimax objective actually wants -- without the sort,
+    and without moving the set. What bounds it in practice is float resolution,
+    not cost: see experiment 8.
+
+    ``scale`` divides the violations first. It must be a constant of the solve,
+    not a function of the point, or the ordering it induces is a different
+    potential function on every step. Its only job is to keep a high power inside
+    the dynamic range of the accumulator.
+    """
+    if power == 2.0 and scale is None:
+        return v.square()            # the incumbent path, bit for bit
+    if scale is not None:
+        v = v / scale
+    return v.pow(power)
+
+
+def check_policy(policy: str, is_equality: bool, tiebreak_power: float = 2.0) -> None:
     """Raise if ``policy`` is not usable on this problem."""
     if policy not in POLICIES:
         raise ValueError(f"Unknown acceptance policy: {policy!r}; expected one of {POLICIES}")
+    if tiebreak_power <= 0:
+        raise ValueError(f"tiebreak_power must be positive, got {tiebreak_power!r}")
+    if policy == LINF_L2_NONINCREASE and tiebreak_power != 2.0:
+        raise ValueError(
+            f"Acceptance policy {policy!r} constrains an accepted move not to raise the "
+            f"sum of squares, so it is defined at tiebreak_power=2; got {tiebreak_power!r}. "
+            "Raising the power is a tie-break refinement, not an L2 constraint -- the two "
+            "happen to share a cache. Use 'linf_l2_tiebreak' to vary the power."
+        )
     if policy in EQUALITY_ONLY_POLICIES and not is_equality:
         raise ValueError(
             f"Acceptance policy {policy!r} is only defined when every constraint is an "

@@ -135,7 +135,8 @@ def solve_batch(A, lower=None, upper=None, *, domain, init="lstsq_round", x0=Non
     upper_t = _as_bound(upper, "upper", n_constraints, n_instances, device, dtype,
                         float("inf"))
     viol.check_bounds(lower_t, upper_t)
-    viol.check_policy(options.acceptance, viol.is_equality(lower_t, upper_t))
+    viol.check_policy(options.acceptance, viol.is_equality(lower_t, upper_t),
+                      options.tiebreak_power)
 
     domain_t = _as_domain(domain, n_instances, device, dtype)
     scale_t = None
@@ -165,7 +166,8 @@ def solve_batch(A, lower=None, upper=None, *, domain, init="lstsq_round", x0=Non
 
     counters = Counters()
     batch = Batch(matrix, x_idx, domain_t, lower_t, upper_t, row_scale=scale_t,
-                  fixed_mask=fixed_t, acceptance=options.acceptance, seed=options.seed)
+                  fixed_mask=fixed_t, acceptance=options.acceptance,
+                  tiebreak_power=options.tiebreak_power, seed=options.seed)
 
     finite = torch.isfinite(lower_t)
     scale = float(lower_t[finite].abs().max()) if bool(finite.any()) else 0.0

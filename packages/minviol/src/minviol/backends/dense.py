@@ -112,7 +112,10 @@ class DenseMatrix:
             if batch.row_scale is not None:
                 v = v * batch.row_scale[rows][:, tag[live]]
             maxima[live] = torch.maximum(maxima[live], v.max(dim=0).values)
-            squares[live] += v.square().sum(dim=0)
+            squares[live] += viol.tiebreak_terms(
+                v, batch.tiebreak_power,
+                None if batch.tiebreak_scale is None
+                else batch.tiebreak_scale[tag[live]]).sum(dim=0)
             counters.bump("constraint_candidate_products",
                           (min(start + stage, n_constraints) - start) * len(live))
             start += stage

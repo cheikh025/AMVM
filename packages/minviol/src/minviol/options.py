@@ -74,6 +74,23 @@ class Options:
     # L2 policies are equality-mode features (see violation.py).
     acceptance: str = "linf_l2_tiebreak"
 
+    # Power of the violation the tie-break sums over every constraint. At 2 it is
+    # the sum of squares. Raising it concentrates the sum on the largest
+    # violations, so the ordering moves towards the lexicographic one on the
+    # sorted violation vector -- which is the ordering a minimax objective wants
+    # -- while staying a sum over a fixed set, and so a potential function.
+    #
+    # Set it to 4 on a problem whose constraint values tie: integer or otherwise
+    # structured systems, where two candidates often leave the maximum in exactly
+    # the same place. On the one such instance in the benchmark set it reaches a
+    # violation the default does not reach at four times the budget. The default
+    # is 2 because where values are continuous, ties essentially never occur and
+    # the exponent is then paid on every candidate to break ties that do not
+    # exist -- measured at 4-16% for an identical search. Above about 32 the small
+    # terms underflow, the tie-break stops discriminating and the search gets
+    # worse than at 2; see experiment 8.
+    tiebreak_power: float = 2.0
+
     # A move counts as an improvement when it beats the incumbent by more than
     # this. Relative is right for a library, where the objective's scale is the
     # caller's: the instances this was lifted from range from 0.2 to 9435. The
