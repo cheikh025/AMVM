@@ -25,25 +25,46 @@ def zero_start(domain, n_variables):
     return nearest_level(domain, target)
 
 
-def lstsq_round_start(matrix, lower, upper, domain, n_variables):
-    """Least-squares fit to the middle of the finite bounds, rounded onto the domain.
+def least_squares_target(lower, upper):
+    """The value to aim each constraint at, and which constraints have one.
 
-    Constraints with an infinite side have no midpoint, so they are dropped from
-    the fit rather than given an arbitrary target. If that leaves nothing, this
-    degenerates to the zero start, which is the honest answer for a problem whose
-    bounds say nothing about where to look.
+    A two-sided constraint is aimed at the middle of its interval. A one-sided one
+    is aimed at its own bound: ``a.x == u`` satisfies ``a.x <= u``, so the
+    boundary is the nearest point that the constraint is happy with, and anything
+    the fit undershoots by is strictly feasible.
+
+    Getting this wrong is not a small loss. Dropping one-sided constraints for
+    want of a midpoint leaves a pure inequality system with no finite rows at
+    all, so the fit degenerates to the zero start -- which is exactly the cold
+    start this function exists to avoid.
+    """
+    has_lower, has_upper = torch.isfinite(lower), torch.isfinite(upper)
+    both = has_lower & has_upper
+    target = torch.where(both, 0.5 * (lower + upper),
+                         torch.where(has_upper, upper,
+                                     torch.where(has_lower, lower,
+                                                 torch.zeros_like(lower))))
+    return target, has_lower | has_upper
+
+
+def lstsq_round_start(matrix, lower, upper, domain, n_variables):
+    """Least-squares fit to the constraints' targets, rounded onto the domain.
+
+    A constraint with no finite bound says nothing about where to look, so it is
+    dropped. If that leaves nothing, this degenerates to the zero start, which is
+    the honest answer for a problem with no bounds at all.
     """
     device = domain.device
     n_instances = domain.shape[0]
-    finite = torch.isfinite(lower) & torch.isfinite(upper)   # (constraints, instances)
+    targets, bounded = least_squares_target(lower, upper)
 
     starts = []
     for r in range(n_instances):
-        rows = torch.nonzero(finite[:, r], as_tuple=True)[0]
+        rows = torch.nonzero(bounded[:, r], as_tuple=True)[0]
         if not len(rows):
             starts.append(zero_start(domain[r:r + 1], n_variables)[0])
             continue
-        target = 0.5 * (lower[rows, r] + upper[rows, r])
+        target = targets[rows, r]
         block = matrix.dense_rows(rows)
         # lstsq is not implemented on every backend (notably MPS), and this runs
         # once per solve, so a CPU round trip costs nothing worth defending.
