@@ -46,12 +46,47 @@ SKIP_SETTLED_LOCAL_SEARCH = _flag("AMVM_SKIP_SETTLED_LOCAL_SEARCH", True)
 DEVICE_RESIDENT_SWAP = _flag("AMVM_DEVICE_RESIDENT_SWAP", True)
 
 # A6: stop evaluating a candidate once its running maximum has passed the best
-# candidate found so far. Selection needs the smallest maximum, so a candidate
+# candidate found so far. On by default only in company with RESIDUAL_ORDERED_ROWS:
+# on its own, pruning was measured SLOWER than not pruning on the narrow layers
+# (0.84x on q_proj, 0.79x on fc1), because in index order a partial maximum stays
+# far below the bound and almost nothing is dropped. The two together are
+# 1.25x to 1.65x faster than no pruning. Turning this off without also turning off
+# the ordering is a configuration nobody measured as good. Selection needs the smallest maximum, so a candidate
 # whose partial maximum is already larger can never win and never needs its
 # remaining rows. Pruning against the acceptance bound instead was measured and
 # discarded: nearly every screening survivor stays under that bound, so it drops
 # almost nothing.
-PRUNE_TO_INCUMBENT = _flag("AMVM_PRUNE_TO_INCUMBENT", False)
+PRUNE_TO_INCUMBENT = _flag("AMVM_PRUNE_TO_INCUMBENT", True)
+
+# Stop a local-search descent when the solver's own time budget has expired. The
+# descent loops until it finds no improving move, and nothing inside it consults
+# the stopping criterion, which is only checked between ALNS iterations. Under a
+# tie-accepting policy the descent can keep taking equal-infinity-norm moves for
+# far longer than the whole budget: measured on fc1, one 10-second solve was still
+# inside its first descent after 180 seconds. Honouring the deadline truncates a
+# descent, so it changes the search and must be judged at equal time.
+LOCAL_SEARCH_DEADLINE = _flag("AMVM_LOCAL_SEARCH_DEADLINE", True)
+
+# Visit the residual rows in descending order of magnitude inside the pruned
+# exact stage, instead of in index order. The objective is a maximum, and the
+# audit found it is attained at a single sample with only a handful within 1% of
+# it, so the largest residuals decide almost every candidate's score. Visiting
+# them first makes each partial maximum nearly its final value after one stage,
+# which is what pruning needs to drop candidates early. Selection is unchanged: a
+# maximum does not depend on the order it is accumulated in. Only meaningful with
+# PRUNE_TO_INCUMBENT, since without pruning every row is visited regardless.
+RESIDUAL_ORDERED_ROWS = _flag("AMVM_RESIDUAL_ORDERED_ROWS", True)
+
+# Fewest residual rows for which the pruned, residual-ordered stage is worth its
+# overhead. It buys the right to stop reading rows, so it pays only when there are
+# many rows to stop reading; below that the row gather, the per-stage compaction
+# and the ordering sort cost more than they save. Measured on q_proj at 100
+# iterations, one variant per process: 0.85x at 1,024 samples, 0.87x at 4,096,
+# 1.02x at 8,192, 1.13x at 16,384. The two other applications sit far below the
+# crossover (tomography 728 samples at 0.80x, FIR 192 at 0.90x) and this gate is
+# what keeps the default from making them slower. Quantization in production runs
+# 262,144 samples, far above it.
+PRUNE_MIN_SAMPLES = _int("AMVM_PRUNE_MIN_SAMPLES", 8192)
 
 # Rows in the first pruning stage. Later stages grow as candidates die, holding
 # the intermediate tensor near the memory budget.
@@ -75,9 +110,10 @@ def prune_slack(bound):
     """
     return bound + bound.abs() * 1e-6 + 1e-12
 
-# A7: evaluate the L2 term from the Gram matrix instead of accumulating squares
-# over every residual row.
-GRAM_L2 = _flag("AMVM_GRAM_L2", False)
+# A7, the Gram-matrix L2, has no flag on purpose. It was measured and not
+# implemented: the squares accumulation it would replace is about 10% of the
+# exact stage. A flag here would advertise a path that does not exist and would
+# put a meaningless field in every run manifest. See docs/gpu-acceleration.md.
 
 # B: run rows of a matrix in one batched tensor program instead of one Python
 # loop per row.
@@ -126,6 +162,11 @@ def row_tile_for(n_rows: int, candidate_chunk: int, element_size: int,
     return int(max(1, min(n_rows, affordable)))
 
 
+def prune_worthwhile(n_samples: int) -> bool:
+    """Whether the pruned exact stage pays at this problem size."""
+    return PRUNE_TO_INCUMBENT and n_samples >= PRUNE_MIN_SAMPLES
+
+
 def resolve_row_tile(n_rows: int, candidate_chunk: int, element_size: int) -> int:
     """Return the row tile the active configuration asks for."""
     if BUDGET_ROW_TILE:
@@ -141,7 +182,9 @@ def describe(device: torch.device = None) -> dict:
         "prune_to_incumbent": PRUNE_TO_INCUMBENT,
         "prune_first_stage": PRUNE_FIRST_STAGE,
         "prune_stage_growth": PRUNE_STAGE_GROWTH,
-        "gram_l2": GRAM_L2,
+        "prune_min_samples": PRUNE_MIN_SAMPLES,
+        "residual_ordered_rows": RESIDUAL_ORDERED_ROWS,
+        "local_search_deadline": LOCAL_SEARCH_DEADLINE,
         "batched_rows": BATCHED_ROWS,
         "batch_size": BATCH_SIZE,
         "batch_candidate_tile": BATCH_CANDIDATE_TILE,

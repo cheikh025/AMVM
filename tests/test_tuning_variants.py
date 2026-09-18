@@ -206,6 +206,7 @@ def test_incumbent_pruning_picks_the_same_swap(make_state, monkeypatch, seed, po
     """
     monkeypatch.setattr(tuning, "BUDGET_ROW_TILE", False)
     monkeypatch.setattr(tuning, "PRUNE_FIRST_STAGE", 8)
+    monkeypatch.setattr(tuning, "PRUNE_MIN_SAMPLES", 0)
 
     reference_state = _swap_instance(make_state, seed, rows=96, columns=32)
     reference_state.acceptance_policy = policy
@@ -289,3 +290,122 @@ def test_pruning_never_drops_a_candidate_that_ties_the_incumbent(make_state, mon
     assert float(pruned_max[winner]) == pytest.approx(float(exact_max[winner]), abs=1e-6)
     assert float(pruned_squares[winner]) == pytest.approx(float(exact_squares[winner]),
                                                           rel=1e-5)
+
+
+@pytest.mark.parametrize("seed", [0, 3, 17, 2026, 31337])
+@pytest.mark.parametrize("policy", ["linf", "linf_l2_tiebreak", "linf_l2_nonincrease"])
+def test_residual_ordered_rows_pick_the_same_swap(make_state, monkeypatch, seed, policy):
+    """Visiting rows by residual magnitude must not change which swap is chosen.
+
+    Each candidate's score is a maximum over every row, and a maximum does not
+    depend on the order it is accumulated in, so ordering only changes how early
+    the pruning bound bites. The L2 term is summed in a different order, so that
+    comparison allows float reassociation.
+    """
+    monkeypatch.setattr(tuning, "BUDGET_ROW_TILE", False)
+    monkeypatch.setattr(tuning, "PRUNE_FIRST_STAGE", 8)
+    monkeypatch.setattr(tuning, "PRUNE_TO_INCUMBENT", True)
+    monkeypatch.setattr(tuning, "PRUNE_MIN_SAMPLES", 0)
+
+    indexed_state = _swap_instance(make_state, seed, rows=96, columns=32)
+    indexed_state.acceptance_policy = policy
+    monkeypatch.setattr(tuning, "RESIDUAL_ORDERED_ROWS", False)
+    indexed = LocalSearch(indexed_state)
+    indexed.delta_q = 1
+    indexed_moved = indexed._perform_swap_device_resident()
+
+    ordered_state = _swap_instance(make_state, seed, rows=96, columns=32)
+    ordered_state.acceptance_policy = policy
+    monkeypatch.setattr(tuning, "RESIDUAL_ORDERED_ROWS", True)
+    ordered = LocalSearch(ordered_state)
+    ordered.delta_q = 1
+    ordered_moved = ordered._perform_swap_device_resident()
+
+    assert ordered_moved == indexed_moved
+    assert torch.equal(ordered_state.weights, indexed_state.weights)
+    assert ordered_state.objective_value == pytest.approx(indexed_state.objective_value,
+                                                          rel=1e-6)
+
+
+def test_residual_ordering_reaches_the_same_scores_as_no_pruning(make_state, monkeypatch):
+    """A bound nothing reaches must leave ordered scores exact, not merely equal in choice."""
+    monkeypatch.setattr(tuning, "PRUNE_FIRST_STAGE", 2)
+    monkeypatch.setattr(tuning, "RESIDUAL_ORDERED_ROWS", True)
+    state = _swap_instance(make_state, 11, rows=48, columns=16)
+    search = LocalSearch(state)
+    search.delta_q = 1
+
+    left = torch.tensor([0, 1], device=state.torch_device)
+    right = torch.tensor([2, 3], device=state.torch_device)
+    delta = state.quantization_levels[1] - state.quantization_levels[0]
+    order = torch.argsort(state.absD_ks, descending=True)
+    unreachable = torch.tensor(float("inf"), device=state.torch_device,
+                               dtype=state.inputs.dtype)
+
+    exact_maxima, exact_squares = search._exact_candidate_scores(
+        left, right, delta, row_tile=len(state.inputs))
+    maxima, squares = search._exact_candidate_scores_pruned(
+        left, right, delta, unreachable, row_order=order)
+
+    assert torch.allclose(maxima, exact_maxima, rtol=1e-6)
+    assert torch.allclose(squares, exact_squares, rtol=1e-5)
+
+
+def test_residual_ordering_prunes_more_than_index_order(make_state, monkeypatch):
+    """The mechanism: the largest residuals decide the maximum, so visit them first.
+
+    With index order the first stage sees arbitrary rows and partial maxima stay
+    small, so few candidates can be dropped. With residual order the first stage
+    is close to each candidate's final maximum, so the bound drops most of them.
+    """
+    from ALNS import counters
+
+    monkeypatch.setattr(tuning, "BUDGET_ROW_TILE", False)
+    monkeypatch.setattr(tuning, "PRUNE_FIRST_STAGE", 4)
+    monkeypatch.setattr(tuning, "PRUNE_TO_INCUMBENT", True)
+    monkeypatch.setattr(tuning, "PRUNE_MIN_SAMPLES", 0)
+
+    def work(ordered):
+        monkeypatch.setattr(tuning, "RESIDUAL_ORDERED_ROWS", ordered)
+        state = _swap_instance(make_state, 5, rows=256, columns=48, bits=3)
+        state.acceptance_policy = "linf"
+        search = LocalSearch(state)
+        search.delta_q = 1
+        counters.reset()
+        search._perform_swap_device_resident()
+        return counters.snapshot().get("pruned_row_candidate_products", 0)
+
+    assert work(ordered=True) < work(ordered=False)
+
+
+def test_pruning_is_skipped_below_the_sample_threshold(make_state, monkeypatch):
+    """The gate that keeps the default from slowing the other applications down.
+
+    Pruning buys the right to stop reading rows, so it pays only when there are
+    many rows to stop reading. Tomography (728 samples) and FIR design (192) sit
+    far below the measured crossover, and without this gate the shared default
+    made both slower.
+    """
+    from ALNS import counters
+
+    monkeypatch.setattr(tuning, "PRUNE_TO_INCUMBENT", True)
+    monkeypatch.setattr(tuning, "PRUNE_FIRST_STAGE", 4)
+
+    def products(threshold):
+        monkeypatch.setattr(tuning, "PRUNE_MIN_SAMPLES", threshold)
+        state = _swap_instance(make_state, 5, rows=64, columns=32, bits=3)
+        search = LocalSearch(state)
+        search.delta_q = 1
+        counters.reset()
+        search._perform_swap_device_resident()
+        return counters.snapshot().get("pruned_row_candidate_products", 0)
+
+    assert products(threshold=0) > 0, "below-threshold gate should not disable pruning at 0"
+    assert products(threshold=10_000) == 0, "64 samples is far below 10,000; pruning must be skipped"
+
+    # The boundary itself, read against an explicit threshold rather than whatever
+    # the previous call left patched in.
+    monkeypatch.setattr(tuning, "PRUNE_MIN_SAMPLES", 8192)
+    assert tuning.prune_worthwhile(8192) and not tuning.prune_worthwhile(8191)
+    monkeypatch.setattr(tuning, "PRUNE_TO_INCUMBENT", False)
+    assert not tuning.prune_worthwhile(1_000_000), "the flag still overrides the gate"

@@ -23,7 +23,11 @@ production sample count.
 
 Reproduce the inputs with `experiments/capture_real_instances.py`; the files are
 not checked in. Run a variant with `experiments/run_protocol.sh <label>`, and
-read the tables with `experiments/summarize_results.py`.
+read the tables with `experiments/summarize_results.py`. For a timing claim, use
+`experiments/run_interleaved.sh`, which measures several variants in one process
+with the solves interleaved instead of blocked, at no extra cost and in the same
+output layout; see the correction under "Changes and what each one bought" for why
+that matters.
 
 ## What the profile found
 
@@ -59,8 +63,36 @@ between neighbouring rows is attributable to that change.
 | A3 device-resident swap pass | 183 | 122 | 1887 |
 | A4 budget-derived row tile | 145 | 105 | 1619 |
 
-Median milliseconds per iteration, 20 iterations, four rows, profiler off. The
-stack is 2.0x on q_proj, 2.0x on fc1 and 1.8x on fc2 against the baseline.
+Median milliseconds per iteration, 20 iterations, four rows, profiler off.
+
+**These were measured in blocks, one variant after another, and the totals they
+give are 6% to 8% too high on two of the three layers.** The blocks ran over
+several hours while the machine was on battery and the charge fell, and battery
+and wall power do not use the same performance mode on this machine. Re-measured
+by alternating the two builds within each repetition, which cancels any drift
+over the run, the end-to-end stack is:
+
+| Layer | baseline | with the defaults | speedup | originally reported |
+|---|---:|---:|---:|---:|
+| q_proj | 285 | 152 | 1.87x | 1.99x |
+| fc1 | 212 | 104 | 2.03x | 2.03x |
+| fc2 | 2662 | 1642 | 1.62x | 1.76x |
+
+Read the stack as **1.6x to 2.0x**, not 2x. The per-variant rows above are still
+the best attribution available, since re-measuring each step interleaved has not
+been done, but treat their individual sizes as approximate.
+
+Power state itself turned out to matter little: the same configuration measured
+on battery and on wall power differs by under 7%, in both directions, and low
+power mode was off throughout. What the block design could not cancel was drift
+of any kind, and the drift happened to fall in the flattering direction twice.
+
+The fix costs nothing. `experiments/run_interleaved.sh` takes several variants and
+runs the same solves the old protocol did, reordered so every (row, seed) point is
+measured for all variants back to back; drift then hits all of them equally. It is
+cheaper than running each variant separately, because one process covers every
+variant instead of one process per variant. Use `experiments/ab_interleaved.sh`
+only when the two sides are different commits, which flags cannot express.
 
 - **A2** replaces per-element reads of device tensors with one transfer. The
   removed-index list cost 113 ms per call at M=768 and 1 ms after the change.
@@ -197,14 +229,25 @@ much. Worth deciding deliberately rather than discovering in a run.
 | A1 settled-pass skip | merge, on by default | 0 of 36 paired rows worse at equal time |
 | A3 device-resident swap | merge, on by default | identical selection; synchronizations 421 to 155 |
 | A4 budget-derived row tile | merge, on by default | identical objective; operations 46,900 to 5,200 |
-| A6 incumbent pruning | merge behind a flag, off | best at equal time on all three layers, but inside noise on narrow ones |
+| A6 incumbent pruning | ON by default since 2026-09-18, paired with residual ordering | alone it is 0.84x and 0.79x, i.e. slower than no pruning, on the narrow layers |
+| Residual-ordered rows | merge, on by default above 8,192 samples | exact on real layers; 1.01x at 20 iterations, 1.13x at 100, and 1.3x-2x more iterations under a time budget |
+| Sample-count gate on pruning | merge, on by default | below 8,192 samples pruning costs more than it saves, which made tomography 0.70x |
+| Local-search deadline | merge, on by default | one 10s solve had been running 180s+ under the tie-break policy |
+| Acceptance policy | keep `linf_l2_nonincrease` | no policy wins everywhere; removing the gate buys iterations and loses quality |
+| Budget split across replicas | do not implement | worse or neutral everywhere; +24% on fc2 at five replicas |
 | A7 Gram-matrix L2 | do not implement yet | the term it removes is 10% of the stage it runs in |
 | A5 transposed activations | do not implement yet | gathers are not the bottleneck here, and a second copy is 3.2 GB |
 | Tier B batched rows | merge behind a flag, off | parity at equal time on this device |
 
-The four defaults together are 2.0x, 2.0x and 1.8x per iteration, and at equal
-time they reach a lower infinity norm on every layer with no paired row worse
-than the baseline in any of 36 comparisons.
+The four defaults together are 1.87x, 2.03x and 1.62x per iteration when measured
+interleaved, and at equal time they reach a lower infinity norm on every layer
+with no paired row worse than the baseline in any of 36 comparisons.
+
+The equal-time comparisons were also run in blocks, and they are not corrected
+here, but their direction is safe. The variants ran in ladder order while the
+battery drained, so any drift-induced slowdown handicapped the later variants,
+and the later variants are the ones that won. The result is conservative rather
+than flattered.
 
 The flags are the mechanism for keeping this decidable later: every variant lives
 on one commit, `experiments/variants.sh` names the cumulative stack, and

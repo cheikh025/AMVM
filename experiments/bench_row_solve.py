@@ -37,7 +37,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "src" / "GP
 
 from alns.stop import MaxIterations, MaxRuntime  # noqa: E402
 
-from ALNS import tuning  # noqa: E402
+from ALNS import counters, tuning  # noqa: E402
 from ALNS.ALNS import ALNS  # noqa: E402
 from RoundToNearest import FindNearest  # noqa: E402
 from utils.utils import select_device  # noqa: E402
@@ -85,6 +85,10 @@ def solve_one(X, W, row, bits, seed, device, stopping, acceptance_policy):
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
+    # Counters are process-local and additive. One process now runs several
+    # variants, so they must be cleared per solve or a record would carry the
+    # previous variant's counts.
+    counters.reset()
 
     original_row = W[row, :].contiguous()
     _, initial = FindNearest(original_row, bits, device)
@@ -115,7 +119,49 @@ def solve_one(X, W, row, bits, seed, device, stopping, acceptance_policy):
         "objectives": [float(value) for value in statistics_.objectives],
         "solution_digest": digest(solution.best_state.weights),
         "time_to_best": float(solution.bestFoundSolutionTime),
+        "counters": counters.snapshot(),
     }
+
+
+# Variant keys that are solver arguments rather than tuning flags.
+SOLVER_KEYS = {"acceptance_policy"}
+
+
+def parse_variant(spec):
+    """Parse ``LABEL KEY=VALUE ...`` into (label, tuning settings, solver arguments).
+
+    Keys are tuning attributes, except the few in ``SOLVER_KEYS`` which are
+    arguments of the solve itself. Both belong in a variant so an experiment over
+    either can be interleaved.
+    """
+    label, settings, solver = spec[0], {}, {}
+    for assignment in spec[1:]:
+        key, _, raw = assignment.partition("=")
+        if not _:
+            raise SystemExit(f"variant setting must be KEY=VALUE, got {assignment!r}")
+        key = key.strip()
+        if key in SOLVER_KEYS:
+            solver[key] = raw
+            continue
+        if not hasattr(tuning, key):
+            raise SystemExit(f"unknown tuning attribute {key!r}")
+        current = getattr(tuning, key)
+        if isinstance(current, bool):
+            value = raw.strip().lower() in tuning.TRUTHY
+        elif isinstance(current, int):
+            value = int(raw)
+        else:
+            raise SystemExit(f"{key!r} is not a settable flag")
+        settings[key] = value
+    return label, settings, solver
+
+
+def apply_variant(settings, baseline):
+    """Set the variant's flags, restoring every other flag to the baseline."""
+    for key, value in baseline.items():
+        setattr(tuning, key, value)
+    for key, value in settings.items():
+        setattr(tuning, key, value)
 
 
 def run(args):
@@ -123,39 +169,75 @@ def run(args):
     name, X, W = load_instance(args.instance, args.n, device)
     rows = args.rows if args.rows else list(range(min(4, W.shape[0])))
 
-    records = []
+    # One variant by default; several are measured interleaved. Interleaving costs
+    # no extra solves, it only reorders them, so that every (row, seed) point is
+    # measured for all variants within seconds of each other. Anything that drifts
+    # over the run then affects all variants equally instead of whichever one
+    # happened to be running.
+    variants = ([parse_variant(spec) for spec in args.variant] if args.variant
+                else [(args.label, {}, {})])
+    settable = [key for key, value in vars(tuning).items()
+                if key.isupper() and isinstance(value, (bool, int))]
+    baseline = {key: getattr(tuning, key) for key in settable}
+
+    records = {label: [] for label, _, _ in variants}
+    point = 0
     for row in rows:
         for seed in args.seeds:
-            stopping = (MaxRuntime(args.seconds) if args.mode == "quality"
-                        else MaxIterations(args.iterations))
-            record = solve_one(X, W, row, args.bits, seed, device, stopping,
-                               args.acceptance_policy)
-            record.update(mode=args.mode, instance=name, instance_spec=args.instance,
-                          n=int(X.shape[0]), m=int(X.shape[1]), bits=args.bits,
-                          device=str(device), label=args.label,
-                          acceptance_policy=args.acceptance_policy,
-                          flags=tuning.describe(device))
-            if args.mode != "trajectory":
-                record.pop("objectives")
-            records.append(record)
-            print(f"[{args.label}] row {row} seed {seed}: "
-                  f"obj {record['final_objective']:.6f} "
-                  f"({record['iterations']} iters, {record['seconds']:.2f}s, "
-                  f"{record['seconds'] / max(record['iterations'], 1) * 1000:.1f} ms/iter)")
-            if abs(record["final_objective"] - record["exact_objective"]) > 1e-4:
-                raise SystemExit(f"cached objective disagrees with direct recomputation: {record}")
+            # Rotate which variant goes first, so no variant always pays whatever
+            # the first solve at a point costs.
+            order = variants[point % len(variants):] + variants[:point % len(variants)]
+            point += 1
+            for label, settings, solver in order:
+                apply_variant(settings, baseline)
+                policy = solver.get("acceptance_policy", args.acceptance_policy)
+                stopping = (MaxRuntime(args.seconds) if args.mode == "quality"
+                            else MaxIterations(args.iterations))
+                record = solve_one(X, W, row, args.bits, seed, device, stopping,
+                                   policy)
+                record.update(mode=args.mode, instance=name, instance_spec=args.instance,
+                              n=int(X.shape[0]), m=int(X.shape[1]), bits=args.bits,
+                              device=str(device), label=label,
+                              acceptance_policy=policy,
+                              flags=tuning.describe(device))
+                if args.mode != "trajectory":
+                    record.pop("objectives")
+                records[label].append(record)
+                print(f"[{label}] row {row} seed {seed}: "
+                      f"obj {record['final_objective']:.6f} "
+                      f"({record['iterations']} iters, {record['seconds']:.2f}s, "
+                      f"{record['seconds'] / max(record['iterations'], 1) * 1000:.1f} ms/iter)")
+                if abs(record["final_objective"] - record["exact_objective"]) > 1e-4:
+                    raise SystemExit(f"cached objective disagrees with direct recomputation: {record}")
+    apply_variant({}, baseline)
 
-    report = {"label": args.label, "mode": args.mode, "device": str(device),
-              "instance": name, "records": records,
-              "flags": tuning.describe(device),
-              "torch": torch.__version__}
-    rendered = json.dumps(report, indent=2, sort_keys=True)
-    if args.out:
-        pathlib.Path(args.out).parent.mkdir(parents=True, exist_ok=True)
-        pathlib.Path(args.out).write_text(rendered + "\n", encoding="utf-8")
-        print(f"wrote {args.out}")
-    else:
-        print(rendered)
+    # One report per variant, at the layout the summarizer and ``compare`` expect,
+    # so an interleaved run is read with the same tools as a single-variant one.
+    for label, settings, solver in variants:
+        apply_variant(settings, baseline)
+        report = {"label": label, "mode": args.mode, "device": str(device),
+                  "instance": name, "records": records[label],
+                  "flags": tuning.describe(device),
+                  "solver_arguments": solver,
+                  "interleaved_with": [other for other, _, _ in variants if other != label],
+                  "torch": torch.__version__}
+        rendered = json.dumps(report, indent=2, sort_keys=True)
+        if args.results_dir:
+            # Name the file after the instance file, as run_protocol.sh does, so
+            # both protocols write the same layout.
+            stem = (pathlib.Path(args.instance).stem
+                    if pathlib.Path(args.instance).exists() else name)
+            destination = (pathlib.Path(args.results_dir) / label
+                           / f"{stem}_{args.mode}.json")
+        elif args.out:
+            destination = pathlib.Path(args.out)
+        else:
+            print(rendered)
+            continue
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_text(rendered + "\n", encoding="utf-8")
+        print(f"wrote {destination}")
+    apply_variant({}, baseline)
 
 
 def compare(args):
@@ -221,6 +303,12 @@ def main():
     runner.add_argument("--acceptance-policy", default="linf_l2_nonincrease")
     runner.add_argument("--label", default="run")
     runner.add_argument("--out")
+    runner.add_argument("--results-dir",
+                        help="write <results-dir>/<variant>/<instance>_<mode>.json, "
+                             "the layout run_protocol.sh produces")
+    runner.add_argument("--variant", action="append", nargs="+", metavar="SPEC",
+                        help="LABEL [TUNING_ATTR=VALUE ...]; repeat to measure "
+                             "several variants interleaved in one process")
     runner.set_defaults(function=run)
 
     comparer = subparsers.add_parser("compare")
