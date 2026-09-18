@@ -91,8 +91,8 @@ remains for the one case flags cannot express, comparing different commits.
 
 | # | Date | Title | Layer | Decision | Correctness | Memory | Runtime |
 |---|---|---|---|---|---|---|---|
-| 17 | 2026-09-18 | Single-variable descent in the batched engine | Search | KEEP, on by default | exact; swaps-only reproduces the old trajectory | neutral | 22/24 paired rows better at equal time, median -3.9% |
-| 16 | 2026-09-18 | Extract the batched engine as minviol | Infrastructure | KEEP, behind a flag | identical trajectory for 25 rounds on all three policies | neutral | parity; sparse backend 35x at 0.2% density |
+| 17 | 2026-09-18 | Single-variable descent in the batched engine | Search | KEEP; default in minviol, reached from AMVM only via MINVIOL_ENGINE | exact; swaps-only reproduces the old trajectory | neutral | 22/24 paired rows better at equal time, median -3.9% |
+| 16 | 2026-09-18 | Extract the batched engine as minviol | Infrastructure | KEEP, behind a flag | identical trajectory for 25 rounds on all three policies | neutral | parity; sparse scoring 35x at 0.2% density but slower per whole pass |
 | 15 | 2026-09-18 | Sample-count gate on the pruned stage | Infrastructure | KEEP, on by default | same path below the gate | neutral | restores tomography and FIR to parity |
 | 14 | 2026-09-18 | Cross-application check, and a measurement fault | Method | CORRECTION | exact throughout | neutral | in-process variants warm each other's kernels |
 | 13 | 2026-09-18 | Split the budget across replicas | Search | REVERT | feasible | neutral | worse or neutral; +24% on fc2 at R=5 |
@@ -203,8 +203,28 @@ point, and add a sparse backend.
 |---|---|
 | Trajectory vs `batched.py` | identical point and objective for 25 perturb-and-descend rounds, all three acceptance policies, with fixed variables and per-instance domains |
 | Sparse vs dense candidate scores | bit-identical on both move types |
-| Sparse speedup, 100k constraints, MPS | 35.3x at 0.2% density, 11.5x at 1%, 1.4x at 10%, 0.77x at 20% |
+| Sparse *scoring* speedup, 100k constraints, MPS | 35.3x at 0.2% density, 11.5x at 1%, 1.4x at 10%, 0.77x at 20% |
+| Sparse *whole-pass* speedup | 4.3x on the single-variable pass, 0.10x-0.65x on the swap pass, 0.31x-0.89x over three full passes |
 | Equal-time quality, swaps only | parity (see entry 17) |
+
+**The scoring number does not survive a pass.** A pass also screens, refreshes
+caches, recomputes the top-K set and applies a move, all proportional to the
+constraint count whatever the backend holds. Profiling says the sparse swap pass
+is bound by kernel launches, not arithmetic: 4,130 candidates over 826k entries
+take 8.6 ms, and a bare column gather already costs 1.2 ms. Removing the
+`torch.unique` merge in favour of two binary searches made it slightly *worse*,
+which is what says the sort was not the cost.
+
+That measurement produced the more useful finding: on a general constraint system
+from a cold start, swaps are the *worse* move, not merely the slow one. At equal
+time, single-variable moves alone reach a feasible point where moves-plus-swaps
+stalls at 5.7 and swaps alone at 9.5. `Options.swap_moves` turns them off.
+
+It also exposed a real defect. `feasibility_tol` defaulted to 1e-9, which float32
+cannot reach: `A x` over m terms accumulates about `sqrt(m)*eps` of relative
+error, so the sparse backend landed at 9.5e-07 on a system dense solved to exactly
+0.0 and neither was reported feasible. The default is now derived from the dtype,
+the bound scale and the constraint count.
 
 ### Analysis
 
