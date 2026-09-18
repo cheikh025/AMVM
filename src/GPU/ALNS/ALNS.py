@@ -7,6 +7,8 @@ from alns.stop import *
 # Import operators
 from .remove_operators import *
 from .repair_operators import *
+import time
+
 import torch
 import random
 
@@ -173,6 +175,12 @@ class ALNS:
                               fixed_mask=self.fixed_mask)
         initial_state.python_rng = self.python_rng
 
+
+        # Hand the local search the same budget the stopping criterion enforces, so
+        # one descent cannot outrun it. Criteria without a runtime leave it unset.
+        max_runtime = getattr(self.stopping_criteria, "max_runtime", None)
+        if max_runtime is not None:
+            initial_state.deadline = time.perf_counter() + max_runtime
 
         initial_objective = initial_state.objective()
         #self.acceptance_criteria = SimulatedAnnealing.autofit(init_obj=initial_objective,  worse=0.05, accept_prob=0.5, num_iters=200, method="exponential")

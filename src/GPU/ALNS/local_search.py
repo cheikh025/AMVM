@@ -1,6 +1,8 @@
 """Contains local search operators
 These are run after running repair operators
 """
+import time
+
 import numpy as np
 
 from ALNS import counters, tuning
@@ -80,6 +82,8 @@ class LocalSearch:
     def local_search_change_weights(self) -> None:
         """Apply best adjacent single-variable moves under the selected policy."""
         while True:
+            if self.out_of_time():
+                break
             best = None
             mutable = torch.nonzero(~self.state.fixed_mask, as_tuple=True)[0]
             indices = mutable.tolist()
@@ -214,11 +218,28 @@ class LocalSearch:
             return unSortedW1s
         
 
+    def out_of_time(self) -> bool:
+        """True once the solve's own deadline has passed.
+
+        A descent runs until it finds no improving move, and the stopping
+        criterion is only consulted between ALNS iterations, so without this a
+        single descent can run for many times the whole budget.
+        """
+        deadline = getattr(self.state, "deadline", None)
+        if not tuning.LOCAL_SEARCH_DEADLINE or deadline is None:
+            return False
+        if time.perf_counter() > deadline:
+            counters.bump("local_search_deadline_stops")
+            return True
+        return False
+
     def local_search_optimized_swap(self):
         """New swap technique (checking necessary condition for swapping)"""
         found_swap = False
 
         while True:
+            if self.out_of_time():
+                break
             loop_end = 2
             if self.use_all_delta_q:
                 loop_end = self.state.num_levels
@@ -353,6 +374,11 @@ class LocalSearch:
             row_tile = tuning.resolve_row_tile(len(state.inputs), candidate_chunk,
                                                state.inputs.element_size())
         screen_rows = state.L_set[1][:NUM_FILTERS]
+        # Residuals are fixed for the whole pass, so the visiting order is computed
+        # once here rather than per candidate chunk.
+        row_order = (torch.argsort(state.absD_ks, descending=True)
+                     if tuning.PRUNE_TO_INCUMBENT and tuning.RESIDUAL_ORDERED_ROWS
+                     else None)
         infinity = torch.tensor(float("inf"), device=device, dtype=dtype)
 
         best_linf, best_l2 = infinity.clone(), infinity.clone()
@@ -406,7 +432,8 @@ class LocalSearch:
                             # the acceptance bound can be taken at all.
                             maxima, squares = self._exact_candidate_scores_pruned(
                                 ii, jj, physical_delta,
-                                torch.minimum(best_linf, acceptance_bound))
+                                torch.minimum(best_linf, acceptance_bound),
+                                row_order=row_order)
                         else:
                             maxima, squares = self._exact_candidate_scores(
                                 ii, jj, physical_delta, row_tile)
@@ -456,7 +483,8 @@ class LocalSearch:
             squares += residuals.square().sum(dim=0)
         return maxima, squares
 
-    def _exact_candidate_scores_pruned(self, ii, jj, physical_delta, prune_bound):
+    def _exact_candidate_scores_pruned(self, ii, jj, physical_delta, prune_bound,
+                                       row_order=None):
         """Exact scores, abandoning candidates that can no longer win.
 
         The pass keeps the candidate with the smallest infinity norm, and a running
@@ -471,6 +499,12 @@ class LocalSearch:
         candidates keep a partial maximum, which is a lower bound already past the
         bound, so the caller still rejects them; their sums of squares are partial
         and are never read.
+
+        ``row_order`` visits the rows in that order rather than in index order.
+        Ordering by descending residual magnitude makes the first stage produce
+        nearly each candidate's final maximum, so the bound bites immediately. The
+        returned maximum is the same either way, because a maximum does not depend
+        on the order it is accumulated in.
         """
         state = self.state
         device = state.torch_device
@@ -483,7 +517,8 @@ class LocalSearch:
                               // (state.inputs.element_size() * tuning.LIVE_INTERMEDIATES))
         start, stage = 0, min(tuning.PRUNE_FIRST_STAGE, total_rows)
         while start < total_rows and len(live):
-            rows = slice(start, start + stage)
+            rows = (slice(start, start + stage) if row_order is None
+                    else row_order[start:start + stage])
             columns_i, columns_j = ii[live], jj[live]
             residuals = (state.signedD_ks[rows][:, None]
                          + physical_delta * (state.inputs[rows][:, columns_i]

@@ -123,14 +123,26 @@ def solve_one(X, W, row, bits, seed, device, stopping, acceptance_policy):
     }
 
 
+# Variant keys that are solver arguments rather than tuning flags.
+SOLVER_KEYS = {"acceptance_policy"}
+
+
 def parse_variant(spec):
-    """Parse ``LABEL KEY=VALUE ...`` into (label, {attribute: value})."""
-    label, settings = spec[0], {}
+    """Parse ``LABEL KEY=VALUE ...`` into (label, tuning settings, solver arguments).
+
+    Keys are tuning attributes, except the few in ``SOLVER_KEYS`` which are
+    arguments of the solve itself. Both belong in a variant so an experiment over
+    either can be interleaved.
+    """
+    label, settings, solver = spec[0], {}, {}
     for assignment in spec[1:]:
         key, _, raw = assignment.partition("=")
         if not _:
             raise SystemExit(f"variant setting must be KEY=VALUE, got {assignment!r}")
         key = key.strip()
+        if key in SOLVER_KEYS:
+            solver[key] = raw
+            continue
         if not hasattr(tuning, key):
             raise SystemExit(f"unknown tuning attribute {key!r}")
         current = getattr(tuning, key)
@@ -141,7 +153,7 @@ def parse_variant(spec):
         else:
             raise SystemExit(f"{key!r} is not a settable flag")
         settings[key] = value
-    return label, settings
+    return label, settings, solver
 
 
 def apply_variant(settings, baseline):
@@ -163,12 +175,12 @@ def run(args):
     # over the run then affects all variants equally instead of whichever one
     # happened to be running.
     variants = ([parse_variant(spec) for spec in args.variant] if args.variant
-                else [(args.label, {})])
+                else [(args.label, {}, {})])
     settable = [key for key, value in vars(tuning).items()
                 if key.isupper() and isinstance(value, (bool, int))]
     baseline = {key: getattr(tuning, key) for key in settable}
 
-    records = {label: [] for label, _ in variants}
+    records = {label: [] for label, _, _ in variants}
     point = 0
     for row in rows:
         for seed in args.seeds:
@@ -176,16 +188,17 @@ def run(args):
             # the first solve at a point costs.
             order = variants[point % len(variants):] + variants[:point % len(variants)]
             point += 1
-            for label, settings in order:
+            for label, settings, solver in order:
                 apply_variant(settings, baseline)
+                policy = solver.get("acceptance_policy", args.acceptance_policy)
                 stopping = (MaxRuntime(args.seconds) if args.mode == "quality"
                             else MaxIterations(args.iterations))
                 record = solve_one(X, W, row, args.bits, seed, device, stopping,
-                                   args.acceptance_policy)
+                                   policy)
                 record.update(mode=args.mode, instance=name, instance_spec=args.instance,
                               n=int(X.shape[0]), m=int(X.shape[1]), bits=args.bits,
                               device=str(device), label=label,
-                              acceptance_policy=args.acceptance_policy,
+                              acceptance_policy=policy,
                               flags=tuning.describe(device))
                 if args.mode != "trajectory":
                     record.pop("objectives")
@@ -200,12 +213,13 @@ def run(args):
 
     # One report per variant, at the layout the summarizer and ``compare`` expect,
     # so an interleaved run is read with the same tools as a single-variant one.
-    for label, settings in variants:
+    for label, settings, solver in variants:
         apply_variant(settings, baseline)
         report = {"label": label, "mode": args.mode, "device": str(device),
                   "instance": name, "records": records[label],
                   "flags": tuning.describe(device),
-                  "interleaved_with": [other for other, _ in variants if other != label],
+                  "solver_arguments": solver,
+                  "interleaved_with": [other for other, _, _ in variants if other != label],
                   "torch": torch.__version__}
         rendered = json.dumps(report, indent=2, sort_keys=True)
         if args.results_dir:

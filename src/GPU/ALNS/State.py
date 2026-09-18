@@ -145,6 +145,10 @@ class State:
 
         self.found_time = time.time()  # Time it took to find the current best solution (a time.time() object)
 
+        # Absolute perf_counter deadline for the whole solve, or None for no limit.
+        # The local search consults it so a long descent cannot outrun the budget.
+        self.deadline = None
+
         # Calculate quantization variables
         self.wMin = torch.min(original_weights)
         self.wMax = torch.max(original_weights)

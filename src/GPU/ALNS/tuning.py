@@ -53,6 +53,25 @@ DEVICE_RESIDENT_SWAP = _flag("AMVM_DEVICE_RESIDENT_SWAP", True)
 # almost nothing.
 PRUNE_TO_INCUMBENT = _flag("AMVM_PRUNE_TO_INCUMBENT", False)
 
+# Stop a local-search descent when the solver's own time budget has expired. The
+# descent loops until it finds no improving move, and nothing inside it consults
+# the stopping criterion, which is only checked between ALNS iterations. Under a
+# tie-accepting policy the descent can keep taking equal-infinity-norm moves for
+# far longer than the whole budget: measured on fc1, one 10-second solve was still
+# inside its first descent after 180 seconds. Honouring the deadline truncates a
+# descent, so it changes the search and must be judged at equal time.
+LOCAL_SEARCH_DEADLINE = _flag("AMVM_LOCAL_SEARCH_DEADLINE", True)
+
+# Visit the residual rows in descending order of magnitude inside the pruned
+# exact stage, instead of in index order. The objective is a maximum, and the
+# audit found it is attained at a single sample with only a handful within 1% of
+# it, so the largest residuals decide almost every candidate's score. Visiting
+# them first makes each partial maximum nearly its final value after one stage,
+# which is what pruning needs to drop candidates early. Selection is unchanged: a
+# maximum does not depend on the order it is accumulated in. Only meaningful with
+# PRUNE_TO_INCUMBENT, since without pruning every row is visited regardless.
+RESIDUAL_ORDERED_ROWS = _flag("AMVM_RESIDUAL_ORDERED_ROWS", False)
+
 # Rows in the first pruning stage. Later stages grow as candidates die, holding
 # the intermediate tensor near the memory budget.
 PRUNE_FIRST_STAGE = _int("AMVM_PRUNE_FIRST_STAGE", 512)
@@ -142,6 +161,8 @@ def describe(device: torch.device = None) -> dict:
         "prune_to_incumbent": PRUNE_TO_INCUMBENT,
         "prune_first_stage": PRUNE_FIRST_STAGE,
         "prune_stage_growth": PRUNE_STAGE_GROWTH,
+        "residual_ordered_rows": RESIDUAL_ORDERED_ROWS,
+        "local_search_deadline": LOCAL_SEARCH_DEADLINE,
         "batched_rows": BATCHED_ROWS,
         "batch_size": BATCH_SIZE,
         "batch_candidate_tile": BATCH_CANDIDATE_TILE,
