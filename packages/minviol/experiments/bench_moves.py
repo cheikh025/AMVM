@@ -70,6 +70,7 @@ VARIANTS = {
                       "kick_escalation": True, "compound_moves": True,
                       "compound_width": 128},
 
+
     # Experiment 4, refined: escalate only after a long run of failures, so an
     # instance still making progress is left alone.
     "escalate-patient": {"swap_moves": False, "single_variable_moves": True,

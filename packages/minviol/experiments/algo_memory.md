@@ -169,6 +169,7 @@ changed nothing. Ranked by what they bought:
 
 | # | Date | Title | Layer | Decision | Median ratio | Paired | Notes |
 |---|---|---|---|---|---|---|---|
+| 7 | 2026-09-18 | Settle ties on the worst constraints | Evaluator | **REVERT** | 1.000 | 0 better / 12 worse | a tie-break must be a potential function; this one is not |
 | 6 | 2026-09-18 | A genuine compound two-variable move | Search | **REVERT** (flag kept, default off) | 1.000 | 3 better / 8 worse | ill-cond is 2-opt optimal, exhaustively |
 | 5 | 2026-09-18 | Escape by the least damaging move | Search | **REVERT** | 1.108 | 0 better / 21 worse | deterministic escape cycles; sampling it does not save it |
 | 4 | 2026-09-18 | Widen the kick while an instance stalls | Search | **KEEP** | 0.923 | 13 better / 0 worse | feasibility 1/5->3/5, 3/5->5/5, 3/5->5/5 |
@@ -729,4 +730,94 @@ contain and a caller might.
 
 - `experiments/results/exp06_compound.json`
 - `src/minviol/engine.py:compound_pass`, `tests/test_compound.py`
+
+---
+
+## Experiment 7: Settle ties on the worst constraints
+
+**Date:** 2026-09-18 · **Idea layer:** Evaluator / acceptance · **Decision:** REVERT
+
+### Observation that prompted it
+
+Experiments 1, 3, 4, 5 and 6 between them said the escape is not the problem and
+neither is neighbourhood depth. What was left was what the search can *see*. Ties
+are settled on the sum of squared violation over every constraint, while the
+objective is decided inside the worst few. The AMVM audit measured that split
+directly on its own instances: the worst 100 of 16,384 samples hold **7-9%** of
+the total sum of squares, and the infinity norm is decided inside them. So the
+tie-break appeared to be choosing on the 90% of the system the objective cannot
+see.
+
+### Idea card
+
+Settle ties on the sum of violation over the instance's worst constraints — the
+screening set, which is already computed and already holds the incumbent's own
+value — instead of the sum of squares over all of them.
+
+**Hypothesis:** sideways moves start aiming at the constraints that decide the
+objective; tomography and the other plateau-ish instances gain.
+
+### Implementation surface
+
+- `src/minviol/backends/{dense,sparse}.py`: `tiebreak_scores`
+- `src/minviol/engine.py`: `_admissibility` takes the incumbent's reference value
+- `src/minviol/options.py`: `tiebreak` · ~70 lines
+
+### Results
+
+Equal time, 3s, 5 trials. **0 pairs better, 12 worse, 18 tied.**
+
+| Instance | best | worst-sum |
+|---|---:|---:|
+| dense-ineq | 0.0000 (5/5) | 0.0000 (5/5) |
+| equality | 0.0000 (5/5) | 0.0000 (5/5) |
+| ill-cond | 2.8898 | 2.8898 |
+| sparse-ineq | **0.0000 (5/5)** | 2.8639 (0/5) |
+| tomography | **3.0000** | 8.0000 |
+| two-sided | 0.0000 (5/5) | 0.0000 (4/5) |
+
+### Analysis
+
+Two things went wrong and the counters show both.
+
+**On three of six instances it changed nothing at all** — `dense-ineq`,
+`equality` and `ill-cond` ran an identical 273 moves over 366 passes under both
+variants. Ties simply do not occur there: the constraint values are continuous, so
+two candidates essentially never leave the maximum at the same place. The premise
+was drawn from a system where ties are common and applied to instances where they
+are not.
+
+**Where ties do occur it broke the search.** `tomography` completed **0**
+perturb-and-descend iterations against 17, spending its entire budget inside the
+first descent: 530 moves and never finishing. `sparse-ineq` applied *more* moves
+(306 against 206) and got a worse answer, losing feasibility it previously reached
+on every trial.
+
+The mechanism is that the new quantity is not a potential function. The sum over
+every constraint is: a sideways move must strictly reduce it, so a walk across a
+plateau can never return to a point it has left and must terminate. The worst
+constraints are a set **recomputed from the current point**, so lowering the sum
+over it can raise constraints just outside it, which then enter it — and the walk
+stops terminating. That is exactly what 530 moves and zero iterations looks like.
+
+A genuinely lexicographic comparison on the sorted violation vector *would* be a
+potential function and would not have this defect. It is also much more expensive,
+and the measurement above bounds its upside: on half the instance set ties never
+arise, and on the one instance where they dominate the existing sum of squares
+already took it from 47 to 3. Not attempted.
+
+### Lessons
+
+- A tie-break is a potential function or it is a bug. Any quantity defined over a
+  set that moves with the point can be reduced by moving the set.
+- "The objective lives here, so choose here" is the right instinct for a
+  *candidate filter* — screening does exactly that and it works — and the wrong
+  one for an *acceptance rule*, which needs a global argument for termination.
+- Check that the phenomenon you are optimizing for occurs on your instances
+  before optimizing for it. Three of six had no ties to break.
+
+### Artefacts
+
+- `experiments/results/exp07_worst_sum.json`
+- Code: reverted; the reason is recorded in `engine._admissibility`
 

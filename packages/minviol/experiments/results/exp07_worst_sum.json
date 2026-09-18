@@ -1,0 +1,1099 @@
+{
+  "device": "mps",
+  "args": {
+    "variants": [
+      "best",
+      "worst-sum"
+    ],
+    "instances": [
+      "dense-ineq",
+      "equality",
+      "ill-cond",
+      "sparse-ineq",
+      "tomography",
+      "two-sided"
+    ],
+    "seconds": 3.0,
+    "iterations": null,
+    "trials": 5,
+    "device": null,
+    "output": "experiments/results/exp07_worst_sum.json"
+  },
+  "records": [
+    {
+      "instance": "dense-ineq",
+      "variant": "best",
+      "trial": 0,
+      "violation": 0.0,
+      "feasible": true,
+      "iterations": 130,
+      "wall": 2.886970281600952,
+      "counters": {
+        "screened": 157440,
+        "survivors": 4989,
+        "constraint_candidate_products": 99444480,
+        "moves_applied": 279,
+        "passes": 410,
+        "iterations": 130
+      }
+    },
+    {
+      "instance": "dense-ineq",
+      "variant": "worst-sum",
+      "trial": 0,
+      "violation": 0.0,
+      "feasible": true,
+      "iterations": 130,
+      "wall": 2.9289610385894775,
+      "counters": {
+        "screened": 157440,
+        "survivors": 4989,
+        "constraint_candidate_products": 99444480,
+        "tiebreak_scored": 4989,
+        "moves_applied": 279,
+        "passes": 410,
+        "iterations": 130
+      }
+    },
+    {
+      "instance": "dense-ineq",
+      "variant": "worst-sum",
+      "trial": 1,
+      "violation": 0.0,
+      "feasible": true,
+      "iterations": 125,
+      "wall": 3.0135531425476074,
+      "counters": {
+        "screened": 160896,
+        "survivors": 5353,
+        "constraint_candidate_products": 106871136,
+        "tiebreak_scored": 5353,
+        "moves_applied": 293,
+        "passes": 419,
+        "iterations": 125
+      }
+    },
+    {
+      "instance": "dense-ineq",
+      "variant": "best",
+      "trial": 1,
+      "violation": 0.0,
+      "feasible": true,
+      "iterations": 125,
+      "wall": 2.9881112575531006,
+      "counters": {
+        "screened": 160896,
+        "survivors": 5353,
+        "constraint_candidate_products": 106871136,
+        "moves_applied": 293,
+        "passes": 419,
+        "iterations": 125
+      }
+    },
+    {
+      "instance": "dense-ineq",
+      "variant": "best",
+      "trial": 2,
+      "violation": 0.0,
+      "feasible": true,
+      "iterations": 92,
+      "wall": 2.6404569149017334,
+      "counters": {
+        "screened": 140544,
+        "survivors": 4686,
+        "constraint_candidate_products": 93527968,
+        "moves_applied": 273,
+        "passes": 366,
+        "iterations": 92
+      }
+    },
+    {
+      "instance": "dense-ineq",
+      "variant": "worst-sum",
+      "trial": 2,
+      "violation": 0.0,
+      "feasible": true,
+      "iterations": 92,
+      "wall": 2.853663921356201,
+      "counters": {
+        "screened": 140544,
+        "survivors": 4686,
+        "constraint_candidate_products": 93527968,
+        "tiebreak_scored": 4686,
+        "moves_applied": 273,
+        "passes": 366,
+        "iterations": 92
+      }
+    },
+    {
+      "instance": "dense-ineq",
+      "variant": "worst-sum",
+      "trial": 3,
+      "violation": 0.0,
+      "feasible": true,
+      "iterations": 87,
+      "wall": 2.44118332862854,
+      "counters": {
+        "screened": 130944,
+        "survivors": 3808,
+        "constraint_candidate_products": 76032768,
+        "tiebreak_scored": 3808,
+        "moves_applied": 253,
+        "passes": 341,
+        "iterations": 87
+      }
+    },
+    {
+      "instance": "dense-ineq",
+      "variant": "best",
+      "trial": 3,
+      "violation": 0.0,
+      "feasible": true,
+      "iterations": 87,
+      "wall": 2.3665406703948975,
+      "counters": {
+        "screened": 130944,
+        "survivors": 3808,
+        "constraint_candidate_products": 76032768,
+        "moves_applied": 253,
+        "passes": 341,
+        "iterations": 87
+      }
+    },
+    {
+      "instance": "dense-ineq",
+      "variant": "best",
+      "trial": 4,
+      "violation": 0.0,
+      "feasible": true,
+      "iterations": 63,
+      "wall": 2.003192901611328,
+      "counters": {
+        "screened": 109440,
+        "survivors": 3209,
+        "constraint_candidate_products": 63961408,
+        "moves_applied": 221,
+        "passes": 285,
+        "iterations": 63
+      }
+    },
+    {
+      "instance": "dense-ineq",
+      "variant": "worst-sum",
+      "trial": 4,
+      "violation": 0.0,
+      "feasible": true,
+      "iterations": 63,
+      "wall": 2.030758857727051,
+      "counters": {
+        "screened": 109440,
+        "survivors": 3209,
+        "constraint_candidate_products": 63961408,
+        "tiebreak_scored": 3209,
+        "moves_applied": 221,
+        "passes": 285,
+        "iterations": 63
+      }
+    },
+    {
+      "instance": "equality",
+      "variant": "best",
+      "trial": 0,
+      "violation": 0.0,
+      "feasible": true,
+      "iterations": 81,
+      "wall": 2.4491190910339355,
+      "counters": {
+        "screened": 132480,
+        "survivors": 4026,
+        "constraint_candidate_products": 80335296,
+        "moves_applied": 263,
+        "passes": 345,
+        "iterations": 81
+      }
+    },
+    {
+      "instance": "equality",
+      "variant": "worst-sum",
+      "trial": 0,
+      "violation": 0.0,
+      "feasible": true,
+      "iterations": 81,
+      "wall": 2.462522029876709,
+      "counters": {
+        "screened": 132480,
+        "survivors": 4026,
+        "constraint_candidate_products": 80335296,
+        "tiebreak_scored": 4026,
+        "moves_applied": 263,
+        "passes": 345,
+        "iterations": 81
+      }
+    },
+    {
+      "instance": "equality",
+      "variant": "worst-sum",
+      "trial": 1,
+      "violation": 0.0,
+      "feasible": true,
+      "iterations": 101,
+      "wall": 2.6331260204315186,
+      "counters": {
+        "screened": 138624,
+        "survivors": 4390,
+        "constraint_candidate_products": 87708640,
+        "tiebreak_scored": 4390,
+        "moves_applied": 259,
+        "passes": 361,
+        "iterations": 101
+      }
+    },
+    {
+      "instance": "equality",
+      "variant": "best",
+      "trial": 1,
+      "violation": 0.0,
+      "feasible": true,
+      "iterations": 101,
+      "wall": 2.630281925201416,
+      "counters": {
+        "screened": 138624,
+        "survivors": 4390,
+        "constraint_candidate_products": 87708640,
+        "moves_applied": 259,
+        "passes": 361,
+        "iterations": 101
+      }
+    },
+    {
+      "instance": "equality",
+      "variant": "best",
+      "trial": 2,
+      "violation": 0.0,
+      "feasible": true,
+      "iterations": 105,
+      "wall": 2.6539270877838135,
+      "counters": {
+        "screened": 139008,
+        "survivors": 4928,
+        "constraint_candidate_products": 98379264,
+        "moves_applied": 256,
+        "passes": 362,
+        "iterations": 105
+      }
+    },
+    {
+      "instance": "equality",
+      "variant": "worst-sum",
+      "trial": 2,
+      "violation": 0.0,
+      "feasible": true,
+      "iterations": 105,
+      "wall": 2.71006178855896,
+      "counters": {
+        "screened": 139008,
+        "survivors": 4928,
+        "constraint_candidate_products": 98379264,
+        "tiebreak_scored": 4928,
+        "moves_applied": 256,
+        "passes": 362,
+        "iterations": 105
+      }
+    },
+    {
+      "instance": "equality",
+      "variant": "worst-sum",
+      "trial": 3,
+      "violation": 0.0,
+      "feasible": true,
+      "iterations": 87,
+      "wall": 2.608353853225708,
+      "counters": {
+        "screened": 122112,
+        "survivors": 4177,
+        "constraint_candidate_products": 83394208,
+        "tiebreak_scored": 4177,
+        "moves_applied": 230,
+        "passes": 318,
+        "iterations": 87
+      }
+    },
+    {
+      "instance": "equality",
+      "variant": "best",
+      "trial": 3,
+      "violation": 0.0,
+      "feasible": true,
+      "iterations": 87,
+      "wall": 2.294123649597168,
+      "counters": {
+        "screened": 122112,
+        "survivors": 4177,
+        "constraint_candidate_products": 83394208,
+        "moves_applied": 230,
+        "passes": 318,
+        "iterations": 87
+      }
+    },
+    {
+      "instance": "equality",
+      "variant": "best",
+      "trial": 4,
+      "violation": 0.0,
+      "feasible": true,
+      "iterations": 84,
+      "wall": 2.326862096786499,
+      "counters": {
+        "screened": 125184,
+        "survivors": 3950,
+        "constraint_candidate_products": 78792640,
+        "moves_applied": 241,
+        "passes": 326,
+        "iterations": 84
+      }
+    },
+    {
+      "instance": "equality",
+      "variant": "worst-sum",
+      "trial": 4,
+      "violation": 0.0,
+      "feasible": true,
+      "iterations": 84,
+      "wall": 2.312657117843628,
+      "counters": {
+        "screened": 125184,
+        "survivors": 3950,
+        "constraint_candidate_products": 78792640,
+        "tiebreak_scored": 3950,
+        "moves_applied": 241,
+        "passes": 326,
+        "iterations": 84
+      }
+    },
+    {
+      "instance": "ill-cond",
+      "variant": "best",
+      "trial": 0,
+      "violation": 2.88983154296875,
+      "feasible": false,
+      "iterations": 101,
+      "wall": 3.016326904296875,
+      "counters": {
+        "screened": 119040,
+        "survivors": 12070,
+        "constraint_candidate_products": 224068160,
+        "moves_applied": 209,
+        "passes": 310,
+        "iterations": 101
+      }
+    },
+    {
+      "instance": "ill-cond",
+      "variant": "worst-sum",
+      "trial": 0,
+      "violation": 2.88983154296875,
+      "feasible": false,
+      "iterations": 100,
+      "wall": 3.0196259021759033,
+      "counters": {
+        "screened": 115584,
+        "survivors": 11496,
+        "constraint_candidate_products": 212808928,
+        "tiebreak_scored": 11496,
+        "moves_applied": 201,
+        "passes": 301,
+        "iterations": 100
+      }
+    },
+    {
+      "instance": "ill-cond",
+      "variant": "worst-sum",
+      "trial": 1,
+      "violation": 2.6907958984375,
+      "feasible": false,
+      "iterations": 139,
+      "wall": 3.0157089233398438,
+      "counters": {
+        "screened": 134400,
+        "survivors": 9748,
+        "constraint_candidate_products": 169648672,
+        "tiebreak_scored": 9748,
+        "moves_applied": 211,
+        "passes": 350,
+        "iterations": 139
+      }
+    },
+    {
+      "instance": "ill-cond",
+      "variant": "best",
+      "trial": 1,
+      "violation": 2.6907958984375,
+      "feasible": false,
+      "iterations": 139,
+      "wall": 3.0170021057128906,
+      "counters": {
+        "screened": 135168,
+        "survivors": 9786,
+        "constraint_candidate_products": 170193248,
+        "moves_applied": 213,
+        "passes": 352,
+        "iterations": 139
+      }
+    },
+    {
+      "instance": "ill-cond",
+      "variant": "best",
+      "trial": 2,
+      "violation": 2.672111988067627,
+      "feasible": false,
+      "iterations": 137,
+      "wall": 3.0149168968200684,
+      "counters": {
+        "screened": 132864,
+        "survivors": 10157,
+        "constraint_candidate_products": 177568480,
+        "moves_applied": 209,
+        "passes": 346,
+        "iterations": 137
+      }
+    },
+    {
+      "instance": "ill-cond",
+      "variant": "worst-sum",
+      "trial": 2,
+      "violation": 2.672111988067627,
+      "feasible": false,
+      "iterations": 136,
+      "wall": 3.01619815826416,
+      "counters": {
+        "screened": 129792,
+        "survivors": 9807,
+        "constraint_candidate_products": 171275648,
+        "tiebreak_scored": 9807,
+        "moves_applied": 202,
+        "passes": 338,
+        "iterations": 136
+      }
+    },
+    {
+      "instance": "ill-cond",
+      "variant": "worst-sum",
+      "trial": 3,
+      "violation": 2.95513916015625,
+      "feasible": false,
+      "iterations": 125,
+      "wall": 3.022611141204834,
+      "counters": {
+        "screened": 131328,
+        "survivors": 9636,
+        "constraint_candidate_products": 172227296,
+        "tiebreak_scored": 9636,
+        "moves_applied": 217,
+        "passes": 342,
+        "iterations": 125
+      }
+    },
+    {
+      "instance": "ill-cond",
+      "variant": "best",
+      "trial": 3,
+      "violation": 2.899290084838867,
+      "feasible": false,
+      "iterations": 128,
+      "wall": 3.015864849090576,
+      "counters": {
+        "screened": 134784,
+        "survivors": 9750,
+        "constraint_candidate_products": 174109152,
+        "moves_applied": 222,
+        "passes": 351,
+        "iterations": 128
+      }
+    },
+    {
+      "instance": "ill-cond",
+      "variant": "best",
+      "trial": 4,
+      "violation": 3.034809112548828,
+      "feasible": false,
+      "iterations": 135,
+      "wall": 3.0130879878997803,
+      "counters": {
+        "screened": 132480,
+        "survivors": 9741,
+        "constraint_candidate_products": 175411968,
+        "moves_applied": 209,
+        "passes": 345,
+        "iterations": 135
+      }
+    },
+    {
+      "instance": "ill-cond",
+      "variant": "worst-sum",
+      "trial": 4,
+      "violation": 3.034809112548828,
+      "feasible": false,
+      "iterations": 135,
+      "wall": 3.0197291374206543,
+      "counters": {
+        "screened": 132096,
+        "survivors": 9741,
+        "constraint_candidate_products": 175411968,
+        "tiebreak_scored": 9741,
+        "moves_applied": 209,
+        "passes": 344,
+        "iterations": 135
+      }
+    },
+    {
+      "instance": "sparse-ineq",
+      "variant": "best",
+      "trial": 0,
+      "violation": 0.0,
+      "feasible": true,
+      "iterations": 0,
+      "wall": 1.910290002822876,
+      "counters": {
+        "screened": 164352,
+        "survivors": 164352,
+        "sparse_chunks": 214,
+        "untouched_max_inexact": 0,
+        "constraint_candidate_products": 82236990,
+        "moves_applied": 213,
+        "passes": 214
+      }
+    },
+    {
+      "instance": "sparse-ineq",
+      "variant": "worst-sum",
+      "trial": 0,
+      "violation": 2.6199724674224854,
+      "feasible": false,
+      "iterations": 0,
+      "wall": 3.040189743041992,
+      "counters": {
+        "screened": 235008,
+        "survivors": 235008,
+        "sparse_chunks": 306,
+        "untouched_max_inexact": 0,
+        "constraint_candidate_products": 117591210,
+        "tiebreak_scored": 235008,
+        "moves_applied": 306,
+        "passes": 306
+      }
+    },
+    {
+      "instance": "sparse-ineq",
+      "variant": "worst-sum",
+      "trial": 1,
+      "violation": 2.863912582397461,
+      "feasible": false,
+      "iterations": 0,
+      "wall": 3.043548822402954,
+      "counters": {
+        "screened": 229632,
+        "survivors": 229632,
+        "sparse_chunks": 299,
+        "untouched_max_inexact": 0,
+        "constraint_candidate_products": 114534342,
+        "tiebreak_scored": 229632,
+        "moves_applied": 299,
+        "passes": 299
+      }
+    },
+    {
+      "instance": "sparse-ineq",
+      "variant": "best",
+      "trial": 1,
+      "violation": 0.0,
+      "feasible": true,
+      "iterations": 0,
+      "wall": 2.0127787590026855,
+      "counters": {
+        "screened": 157440,
+        "survivors": 157440,
+        "sparse_chunks": 205,
+        "untouched_max_inexact": 0,
+        "constraint_candidate_products": 78526890,
+        "moves_applied": 204,
+        "passes": 205
+      }
+    },
+    {
+      "instance": "sparse-ineq",
+      "variant": "best",
+      "trial": 2,
+      "violation": 0.0,
+      "feasible": true,
+      "iterations": 0,
+      "wall": 1.866607904434204,
+      "counters": {
+        "screened": 158976,
+        "survivors": 158976,
+        "sparse_chunks": 207,
+        "untouched_max_inexact": 0,
+        "constraint_candidate_products": 79304184,
+        "moves_applied": 206,
+        "passes": 207
+      }
+    },
+    {
+      "instance": "sparse-ineq",
+      "variant": "worst-sum",
+      "trial": 2,
+      "violation": 3.39420223236084,
+      "feasible": false,
+      "iterations": 0,
+      "wall": 3.0446016788482666,
+      "counters": {
+        "screened": 241920,
+        "survivors": 241920,
+        "sparse_chunks": 315,
+        "untouched_max_inexact": 0,
+        "constraint_candidate_products": 120680280,
+        "tiebreak_scored": 241920,
+        "moves_applied": 315,
+        "passes": 315
+      }
+    },
+    {
+      "instance": "sparse-ineq",
+      "variant": "worst-sum",
+      "trial": 3,
+      "violation": 3.879243850708008,
+      "feasible": false,
+      "iterations": 0,
+      "wall": 3.0352139472961426,
+      "counters": {
+        "screened": 231936,
+        "survivors": 231936,
+        "sparse_chunks": 302,
+        "untouched_max_inexact": 0,
+        "constraint_candidate_products": 115638216,
+        "tiebreak_scored": 231936,
+        "moves_applied": 302,
+        "passes": 302
+      }
+    },
+    {
+      "instance": "sparse-ineq",
+      "variant": "best",
+      "trial": 3,
+      "violation": 0.0,
+      "feasible": true,
+      "iterations": 0,
+      "wall": 1.9702179431915283,
+      "counters": {
+        "screened": 152832,
+        "survivors": 152832,
+        "sparse_chunks": 199,
+        "untouched_max_inexact": 0,
+        "constraint_candidate_products": 76198692,
+        "moves_applied": 198,
+        "passes": 199
+      }
+    },
+    {
+      "instance": "sparse-ineq",
+      "variant": "best",
+      "trial": 4,
+      "violation": 0.0,
+      "feasible": true,
+      "iterations": 0,
+      "wall": 1.9813849925994873,
+      "counters": {
+        "screened": 160512,
+        "survivors": 160512,
+        "sparse_chunks": 209,
+        "untouched_max_inexact": 0,
+        "constraint_candidate_products": 80121822,
+        "moves_applied": 208,
+        "passes": 209
+      }
+    },
+    {
+      "instance": "sparse-ineq",
+      "variant": "worst-sum",
+      "trial": 4,
+      "violation": 2.8233656883239746,
+      "feasible": false,
+      "iterations": 0,
+      "wall": 3.05491304397583,
+      "counters": {
+        "screened": 235776,
+        "survivors": 235776,
+        "sparse_chunks": 307,
+        "untouched_max_inexact": 0,
+        "constraint_candidate_products": 117690906,
+        "tiebreak_scored": 235776,
+        "moves_applied": 307,
+        "passes": 307
+      }
+    },
+    {
+      "instance": "tomography",
+      "variant": "best",
+      "trial": 0,
+      "violation": 3.0,
+      "feasible": false,
+      "iterations": 13,
+      "wall": 3.0245158672332764,
+      "counters": {
+        "screened": 915840,
+        "survivors": 915840,
+        "sparse_chunks": 530,
+        "untouched_max_inexact": 0,
+        "constraint_candidate_products": 12821760,
+        "moves_applied": 517,
+        "passes": 530,
+        "iterations": 13
+      }
+    },
+    {
+      "instance": "tomography",
+      "variant": "worst-sum",
+      "trial": 0,
+      "violation": 8.0,
+      "feasible": false,
+      "iterations": 0,
+      "wall": 3.0304510593414307,
+      "counters": {
+        "screened": 955584,
+        "survivors": 955584,
+        "sparse_chunks": 553,
+        "untouched_max_inexact": 0,
+        "constraint_candidate_products": 13378176,
+        "tiebreak_scored": 955584,
+        "moves_applied": 553,
+        "passes": 553
+      }
+    },
+    {
+      "instance": "tomography",
+      "variant": "worst-sum",
+      "trial": 1,
+      "violation": 8.0,
+      "feasible": false,
+      "iterations": 0,
+      "wall": 3.029742956161499,
+      "counters": {
+        "screened": 881280,
+        "survivors": 881280,
+        "sparse_chunks": 510,
+        "untouched_max_inexact": 0,
+        "constraint_candidate_products": 12337920,
+        "tiebreak_scored": 881280,
+        "moves_applied": 510,
+        "passes": 510
+      }
+    },
+    {
+      "instance": "tomography",
+      "variant": "best",
+      "trial": 1,
+      "violation": 3.0,
+      "feasible": false,
+      "iterations": 18,
+      "wall": 3.0268921852111816,
+      "counters": {
+        "screened": 1009152,
+        "survivors": 1009152,
+        "sparse_chunks": 584,
+        "untouched_max_inexact": 0,
+        "constraint_candidate_products": 14128128,
+        "moves_applied": 566,
+        "passes": 584,
+        "iterations": 18
+      }
+    },
+    {
+      "instance": "tomography",
+      "variant": "best",
+      "trial": 2,
+      "violation": 2.0,
+      "feasible": false,
+      "iterations": 17,
+      "wall": 3.0230941772460938,
+      "counters": {
+        "screened": 1026432,
+        "survivors": 1026432,
+        "sparse_chunks": 594,
+        "untouched_max_inexact": 0,
+        "constraint_candidate_products": 14370048,
+        "moves_applied": 577,
+        "passes": 594,
+        "iterations": 17
+      }
+    },
+    {
+      "instance": "tomography",
+      "variant": "worst-sum",
+      "trial": 2,
+      "violation": 8.0,
+      "feasible": false,
+      "iterations": 0,
+      "wall": 3.0277888774871826,
+      "counters": {
+        "screened": 965952,
+        "survivors": 965952,
+        "sparse_chunks": 559,
+        "untouched_max_inexact": 0,
+        "constraint_candidate_products": 13523328,
+        "tiebreak_scored": 965952,
+        "moves_applied": 559,
+        "passes": 559
+      }
+    },
+    {
+      "instance": "tomography",
+      "variant": "worst-sum",
+      "trial": 3,
+      "violation": 7.0,
+      "feasible": false,
+      "iterations": 0,
+      "wall": 3.0307729244232178,
+      "counters": {
+        "screened": 877824,
+        "survivors": 877824,
+        "sparse_chunks": 508,
+        "untouched_max_inexact": 0,
+        "constraint_candidate_products": 12289536,
+        "tiebreak_scored": 877824,
+        "moves_applied": 508,
+        "passes": 508
+      }
+    },
+    {
+      "instance": "tomography",
+      "variant": "best",
+      "trial": 3,
+      "violation": 2.0,
+      "feasible": false,
+      "iterations": 17,
+      "wall": 3.0238308906555176,
+      "counters": {
+        "screened": 1003968,
+        "survivors": 1003968,
+        "sparse_chunks": 581,
+        "untouched_max_inexact": 0,
+        "constraint_candidate_products": 14055552,
+        "moves_applied": 564,
+        "passes": 581,
+        "iterations": 17
+      }
+    },
+    {
+      "instance": "tomography",
+      "variant": "best",
+      "trial": 4,
+      "violation": 3.0,
+      "feasible": false,
+      "iterations": 26,
+      "wall": 3.025977849960327,
+      "counters": {
+        "screened": 1016064,
+        "survivors": 1016064,
+        "sparse_chunks": 588,
+        "untouched_max_inexact": 0,
+        "constraint_candidate_products": 14224896,
+        "moves_applied": 562,
+        "passes": 588,
+        "iterations": 26
+      }
+    },
+    {
+      "instance": "tomography",
+      "variant": "worst-sum",
+      "trial": 4,
+      "violation": 7.0,
+      "feasible": false,
+      "iterations": 0,
+      "wall": 3.027784824371338,
+      "counters": {
+        "screened": 915840,
+        "survivors": 915840,
+        "sparse_chunks": 530,
+        "untouched_max_inexact": 0,
+        "constraint_candidate_products": 12821760,
+        "tiebreak_scored": 915840,
+        "moves_applied": 530,
+        "passes": 530
+      }
+    },
+    {
+      "instance": "two-sided",
+      "variant": "best",
+      "trial": 0,
+      "violation": 0.0,
+      "feasible": true,
+      "iterations": 81,
+      "wall": 2.434986114501953,
+      "counters": {
+        "screened": 132480,
+        "survivors": 4026,
+        "constraint_candidate_products": 80335296,
+        "moves_applied": 263,
+        "passes": 345,
+        "iterations": 81
+      }
+    },
+    {
+      "instance": "two-sided",
+      "variant": "worst-sum",
+      "trial": 0,
+      "violation": 0.0,
+      "feasible": true,
+      "iterations": 81,
+      "wall": 2.427485227584839,
+      "counters": {
+        "screened": 132480,
+        "survivors": 4026,
+        "constraint_candidate_products": 80335296,
+        "tiebreak_scored": 4026,
+        "moves_applied": 263,
+        "passes": 345,
+        "iterations": 81
+      }
+    },
+    {
+      "instance": "two-sided",
+      "variant": "worst-sum",
+      "trial": 1,
+      "violation": 0.0,
+      "feasible": true,
+      "iterations": 101,
+      "wall": 2.5491068363189697,
+      "counters": {
+        "screened": 137472,
+        "survivors": 4257,
+        "constraint_candidate_products": 85048640,
+        "tiebreak_scored": 4257,
+        "moves_applied": 256,
+        "passes": 358,
+        "iterations": 101
+      }
+    },
+    {
+      "instance": "two-sided",
+      "variant": "best",
+      "trial": 1,
+      "violation": 0.0,
+      "feasible": true,
+      "iterations": 101,
+      "wall": 2.4918341636657715,
+      "counters": {
+        "screened": 137472,
+        "survivors": 4257,
+        "constraint_candidate_products": 85048640,
+        "moves_applied": 256,
+        "passes": 358,
+        "iterations": 101
+      }
+    },
+    {
+      "instance": "two-sided",
+      "variant": "best",
+      "trial": 2,
+      "violation": 0.0,
+      "feasible": true,
+      "iterations": 105,
+      "wall": 2.615830898284912,
+      "counters": {
+        "screened": 139008,
+        "survivors": 4928,
+        "constraint_candidate_products": 98379264,
+        "moves_applied": 256,
+        "passes": 362,
+        "iterations": 105
+      }
+    },
+    {
+      "instance": "two-sided",
+      "variant": "worst-sum",
+      "trial": 2,
+      "violation": 7.8696465492248535,
+      "feasible": false,
+      "iterations": 105,
+      "wall": 3.019209861755371,
+      "counters": {
+        "screened": 136704,
+        "survivors": 4907,
+        "constraint_candidate_products": 98012640,
+        "tiebreak_scored": 4907,
+        "moves_applied": 251,
+        "passes": 356,
+        "iterations": 105
+      }
+    },
+    {
+      "instance": "two-sided",
+      "variant": "worst-sum",
+      "trial": 3,
+      "violation": 0.0,
+      "feasible": true,
+      "iterations": 87,
+      "wall": 2.2961788177490234,
+      "counters": {
+        "screened": 122112,
+        "survivors": 4177,
+        "constraint_candidate_products": 83394208,
+        "tiebreak_scored": 4177,
+        "moves_applied": 230,
+        "passes": 318,
+        "iterations": 87
+      }
+    },
+    {
+      "instance": "two-sided",
+      "variant": "best",
+      "trial": 3,
+      "violation": 0.0,
+      "feasible": true,
+      "iterations": 87,
+      "wall": 2.278599977493286,
+      "counters": {
+        "screened": 122112,
+        "survivors": 4177,
+        "constraint_candidate_products": 83394208,
+        "moves_applied": 230,
+        "passes": 318,
+        "iterations": 87
+      }
+    },
+    {
+      "instance": "two-sided",
+      "variant": "best",
+      "trial": 4,
+      "violation": 0.0,
+      "feasible": true,
+      "iterations": 84,
+      "wall": 2.248116970062256,
+      "counters": {
+        "screened": 125184,
+        "survivors": 3950,
+        "constraint_candidate_products": 78792640,
+        "moves_applied": 241,
+        "passes": 326,
+        "iterations": 84
+      }
+    },
+    {
+      "instance": "two-sided",
+      "variant": "worst-sum",
+      "trial": 4,
+      "violation": 0.0,
+      "feasible": true,
+      "iterations": 84,
+      "wall": 2.497074842453003,
+      "counters": {
+        "screened": 125184,
+        "survivors": 3950,
+        "constraint_candidate_products": 78792640,
+        "tiebreak_scored": 3950,
+        "moves_applied": 241,
+        "passes": 326,
+        "iterations": 84
+      }
+    }
+  ]
+}

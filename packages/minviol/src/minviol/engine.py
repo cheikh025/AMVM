@@ -109,17 +109,28 @@ def best_per_instance(batch, tag, maxima, squares, admissible):
     return inst_linf, inst_position
 
 
-def _admissibility(batch, tag, maxima, squares, eps):
-    """Which candidates the acceptance policy would take."""
+def _admissibility(batch, tag, maxima, squares, eps, reference):
+    """Which candidates the acceptance policy would take.
+
+    Ties are settled on the sum of squares over *every* constraint, and that
+    "every" is load-bearing. It makes the quantity a potential function: a
+    sideways move must strictly reduce it, so a walk across a plateau cannot
+    return to a point it has left and must terminate. Settling ties on the worst
+    constraints instead -- which is where the objective actually lives, and so
+    looks like the better choice -- was measured and is not: that set is
+    recomputed from the current point, so lowering the sum over it can raise
+    constraints just outside it, which then enter it. The walk stops terminating.
+    See experiment 7.
+    """
     incumbent = batch.objective[tag]
     step = eps[tag]
     if batch.acceptance == viol.LINF_L2_TIEBREAK:
         admissible = ((maxima < incumbent - step)
-                      | ((maxima - incumbent).abs() <= step) & (squares < batch.l2[tag]))
+                      | ((maxima - incumbent).abs() <= step) & (squares < reference[tag]))
     else:
         admissible = maxima < incumbent - step
     if batch.acceptance == viol.LINF_L2_NONINCREASE:
-        admissible = admissible & (squares <= batch.l2[tag])
+        admissible = admissible & (squares <= reference[tag])
     return admissible
 
 
@@ -153,7 +164,7 @@ def _evaluate_and_apply(batch, tag, left, right, delta, q_left, q_right,
     maxima, squares = batch.matrix.exact_scores(batch, tag, left, right, delta, bound,
                                                 screen_rows, options, counters,
                                                 delta_right)
-    admissible = _admissibility(batch, tag, maxima, squares, eps)
+    admissible = _admissibility(batch, tag, maxima, squares, eps, batch.l2)
     _, position = best_per_instance(batch, tag, maxima, squares, admissible)
 
     chosen = position[position < len(tag)]
