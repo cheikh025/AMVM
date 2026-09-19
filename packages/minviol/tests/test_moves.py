@@ -189,7 +189,7 @@ def test_the_defaults_are_the_configuration_that_was_measured_best():
 
 
 def test_a_quantization_shaped_configuration_is_still_reachable():
-    """The opposite settings must remain expressible; AMVM's adapter pins them."""
+    """The opposite settings must stay expressible for quantization-shaped problems."""
     quantization = Options(single_variable_moves=False, swap_moves=True,
                            perturbation="random", kick_escalation=False,
                            acceptance="linf_l2_nonincrease")

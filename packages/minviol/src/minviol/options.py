@@ -66,8 +66,10 @@ class Options:
 
     A quantization-shaped problem wants the opposite of most of this -- it starts
     near round-to-nearest with the level histogram already right, which is where a
-    swap is a strong move. Set `swap_moves=True` and `perturbation="random"` for
-    that; `src/GPU/ALNS/minviol_engine.py` in the AMVM repository does exactly so.
+    swap is a strong move. For that, ask for the pre-experiment search explicitly:
+
+        Options(single_variable_moves=False, swap_moves=True,
+                perturbation="random", kick_escalation=False)
     """
 
     # Acceptance. "linf" is the only policy defined for general bounds; the two
