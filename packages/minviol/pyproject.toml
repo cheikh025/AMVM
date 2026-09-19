@@ -1,17 +1,49 @@
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "minviol"
-version = "0.1.0.dev0"
+version = "0.1.0"
 description = "GPU solver that minimizes the maximum violation of a large constraint system"
 readme = "README.md"
 requires-python = ">=3.10"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
+# Taken from the AMVM commit history rather than guessed. Correct the second
+# entry to a full name before this matters to anyone.
+authors = [
+    { name = "Mahdi Mostajabdaveh", email = "mahdi.ms86@gmail.com" },
+    { name = "Cheikh025", email = "cheikh.aghibou@gmail.com" },
+]
+keywords = [
+    "optimization", "constraint-satisfaction", "feasibility", "minimax",
+    "discrete-optimization", "gpu", "pytorch", "local-search",
+]
+classifiers = [
+    # Alpha, deliberately. The search is a heuristic, the API is not frozen, and
+    # every published timing was measured on Apple MPS or x86 CPU -- CUDA is
+    # unmeasured. See the README, which says so.
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Mathematics",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Operating System :: OS Independent",
+]
 dependencies = ["torch>=2.1", "numpy>=1.24"]
 
 [project.optional-dependencies]
 test = ["pytest>=8"]
+
+[project.urls]
+Homepage = "https://github.com/mahdims/minviol"
+Repository = "https://github.com/mahdims/minviol"
+Issues = "https://github.com/mahdims/minviol/issues"
 
 [tool.setuptools.packages.find]
 where = ["src"]

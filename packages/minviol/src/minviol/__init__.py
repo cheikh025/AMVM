@@ -14,4 +14,13 @@ from .violation import violation
 
 __all__ = ["solve", "solve_batch", "Result", "Budget", "Options", "DenseMatrix", "SparseMatrix",
            "Counters", "violation"]
-__version__ = "0.1.0.dev0"
+
+# Read from the installed distribution rather than written here, so there is one
+# place a version can be wrong. Hardcoding it had already drifted: the wheel said
+# 0.1.0 and the import said 0.1.0.dev0.
+try:
+    from importlib.metadata import PackageNotFoundError, version as _version
+
+    __version__ = _version("minviol")
+except (ImportError, PackageNotFoundError):  # running from a source tree
+    __version__ = "0.0.0+unknown"

@@ -178,3 +178,19 @@ def test_a_float32_system_that_is_solved_is_reported_as_solved():
     assert result.feasible, (
         f"the planted point itself was not reported feasible; violation "
         f"{result.max_violation:.3e}")
+
+
+def test_the_reported_version_matches_the_installed_distribution():
+    """One place a version can be wrong, not two.
+
+    A hardcoded __version__ had already drifted from pyproject.toml -- the wheel
+    said 0.1.0 while the import said 0.1.0.dev0 -- which is the kind of thing
+    nobody notices until it is in a bug report.
+    """
+    from importlib.metadata import PackageNotFoundError, version
+
+    try:
+        installed = version("minviol")
+    except PackageNotFoundError:
+        pytest.skip("minviol is not installed as a distribution here")
+    assert minviol.__version__ == installed
