@@ -1,0 +1,115 @@
+{
+  "device": "mps",
+  "records": [
+    {
+      "constraints": 20000,
+      "variables": 256,
+      "density": 0.002,
+      "nnz": 10209,
+      "max_nnz": 61,
+      "candidates": 768,
+      "dense_ms": 18.123457906767726,
+      "sparse_ms": 3.441625041887164,
+      "speedup": 5.265959448281442
+    },
+    {
+      "constraints": 20000,
+      "variables": 256,
+      "density": 0.01,
+      "nnz": 50951,
+      "max_nnz": 254,
+      "candidates": 768,
+      "dense_ms": 18.1685839779675,
+      "sparse_ms": 3.694667015224695,
+      "speedup": 4.917515950178952
+    },
+    {
+      "constraints": 20000,
+      "variables": 256,
+      "density": 0.05,
+      "nnz": 255578,
+      "max_nnz": 1081,
+      "candidates": 768,
+      "dense_ms": 17.977625131607056,
+      "sparse_ms": 7.248374866321683,
+      "speedup": 2.480228390937253
+    },
+    {
+      "constraints": 20000,
+      "variables": 256,
+      "density": 0.1,
+      "nnz": 512760,
+      "max_nnz": 2093,
+      "candidates": 768,
+      "dense_ms": 18.00062507390976,
+      "sparse_ms": 13.977417023852468,
+      "speedup": 1.2878363036025673
+    },
+    {
+      "constraints": 20000,
+      "variables": 256,
+      "density": 0.2,
+      "nnz": 1025095,
+      "max_nnz": 4184,
+      "candidates": 768,
+      "dense_ms": 17.77045801281929,
+      "sparse_ms": 26.245792163535953,
+      "speedup": 0.6770783637275124
+    },
+    {
+      "constraints": 100000,
+      "variables": 256,
+      "density": 0.002,
+      "nnz": 50824,
+      "max_nnz": 244,
+      "candidates": 768,
+      "dense_ms": 87.60512503795326,
+      "sparse_ms": 2.4837919045239687,
+      "speedup": 35.27071848426176
+    },
+    {
+      "constraints": 100000,
+      "variables": 256,
+      "density": 0.01,
+      "nnz": 256163,
+      "max_nnz": 1077,
+      "candidates": 768,
+      "dense_ms": 87.71375007927418,
+      "sparse_ms": 7.601458113640547,
+      "speedup": 11.53906905332741
+    },
+    {
+      "constraints": 100000,
+      "variables": 256,
+      "density": 0.05,
+      "nnz": 1279819,
+      "max_nnz": 5186,
+      "candidates": 768,
+      "dense_ms": 86.08833304606378,
+      "sparse_ms": 31.81062499061227,
+      "speedup": 2.7062760656689258
+    },
+    {
+      "constraints": 100000,
+      "variables": 256,
+      "density": 0.1,
+      "nnz": 2558873,
+      "max_nnz": 10266,
+      "candidates": 768,
+      "dense_ms": 82.06766680814326,
+      "sparse_ms": 59.456874849274755,
+      "speedup": 1.3802889407858663
+    },
+    {
+      "constraints": 100000,
+      "variables": 256,
+      "density": 0.2,
+      "nnz": 5120381,
+      "max_nnz": 20306,
+      "candidates": 768,
+      "dense_ms": 87.515665916726,
+      "sparse_ms": 114.13229093886912,
+      "speedup": 0.7667914592514457
+    }
+  ]
+}

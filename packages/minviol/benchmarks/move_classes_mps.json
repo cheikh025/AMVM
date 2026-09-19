@@ -1,0 +1,162 @@
+{
+  "device": "mps",
+  "args": {
+    "constraints": 100000,
+    "variables": 256,
+    "densities": [
+      0.002,
+      0.01
+    ],
+    "levels": 4,
+    "seconds": 5.0,
+    "trials": 3,
+    "device": null,
+    "output": "benchmarks/move_classes_mps.json"
+  },
+  "records": [
+    {
+      "density": 0.002,
+      "variant": "moves+swaps",
+      "backend": "sparse",
+      "violations": [
+        5.690755844116211,
+        6.2837934494018555,
+        5.246849536895752
+      ],
+      "median": 5.690755844116211,
+      "feasible": 0
+    },
+    {
+      "density": 0.002,
+      "variant": "moves+swaps",
+      "backend": "dense",
+      "violations": [
+        2.939493179321289,
+        6.2837934494018555,
+        3.1220102310180664
+      ],
+      "median": 3.1220102310180664,
+      "feasible": 0
+    },
+    {
+      "density": 0.002,
+      "variant": "moves only",
+      "backend": "sparse",
+      "violations": [
+        9.5367431640625e-07,
+        2.670977830886841,
+        9.5367431640625e-07
+      ],
+      "median": 9.5367431640625e-07,
+      "feasible": 2
+    },
+    {
+      "density": 0.002,
+      "variant": "moves only",
+      "backend": "dense",
+      "violations": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "median": 0.0,
+      "feasible": 3
+    },
+    {
+      "density": 0.002,
+      "variant": "swaps only",
+      "backend": "sparse",
+      "violations": [
+        9.630488395690918,
+        8.850263595581055,
+        9.48182201385498
+      ],
+      "median": 9.48182201385498,
+      "feasible": 0
+    },
+    {
+      "density": 0.002,
+      "variant": "swaps only",
+      "backend": "dense",
+      "violations": [
+        8.752606391906738,
+        7.119980335235596,
+        7.943585395812988
+      ],
+      "median": 7.943585395812988,
+      "feasible": 0
+    },
+    {
+      "density": 0.01,
+      "variant": "moves+swaps",
+      "backend": "sparse",
+      "violations": [
+        10.009079933166504,
+        9.738068580627441,
+        11.470834732055664
+      ],
+      "median": 10.009079933166504,
+      "feasible": 0
+    },
+    {
+      "density": 0.01,
+      "variant": "moves+swaps",
+      "backend": "dense",
+      "violations": [
+        3.7782342433929443,
+        7.35102653503418,
+        4.284477233886719
+      ],
+      "median": 4.284477233886719,
+      "feasible": 0
+    },
+    {
+      "density": 0.01,
+      "variant": "moves only",
+      "backend": "sparse",
+      "violations": [
+        1.9073486328125e-06,
+        4.69858455657959,
+        3.4927444458007812
+      ],
+      "median": 3.4927444458007812,
+      "feasible": 1
+    },
+    {
+      "density": 0.01,
+      "variant": "moves only",
+      "backend": "dense",
+      "violations": [
+        0.0,
+        0.0,
+        3.4927444458007812
+      ],
+      "median": 0.0,
+      "feasible": 2
+    },
+    {
+      "density": 0.01,
+      "variant": "swaps only",
+      "backend": "sparse",
+      "violations": [
+        16.25759506225586,
+        15.040445327758789,
+        16.77314567565918
+      ],
+      "median": 16.25759506225586,
+      "feasible": 0
+    },
+    {
+      "density": 0.01,
+      "variant": "swaps only",
+      "backend": "dense",
+      "violations": [
+        13.312763214111328,
+        11.43094539642334,
+        13.008077621459961
+      ],
+      "median": 13.008077621459961,
+      "feasible": 0
+    }
+  ]
+}

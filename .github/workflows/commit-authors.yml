@@ -1,0 +1,45 @@
+name: Commit authorship
+
+# A commit records who made a change. Work done with an assistant is still the
+# work of the person who directed and reviewed it, so a person must be the
+# author; the assistant is credited in a Co-Authored-By trailer, which this
+# check allows and does not inspect.
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: authorship-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  authorship:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The whole history, and the branch itself rather than the merge
+          # commit GitHub synthesises, so the range covers the real commits.
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Prove the check can catch what it checks for
+        run: ./.github/scripts/check-commit-authors.sh --self-test
+
+      - name: Check the authorship of this branch's commits
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if [ -n "${BASE_SHA}" ]; then
+            # The merge base, not the base tip: if main moved after the pull
+            # request opened, its new commits are not this branch's to answer for.
+            range="$(git merge-base "${BASE_SHA}" HEAD)..HEAD"
+          else
+            range="origin/main..HEAD"
+          fi
+          ./.github/scripts/check-commit-authors.sh "${range}"
