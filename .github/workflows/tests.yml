@@ -43,6 +43,14 @@ jobs:
           python -m pip check
       - name: Run unit and integration tests
         run: python -m pytest --junitxml=test-results.xml
+
+      - name: Run the minviol package's own tests
+        # `pytest` at this root honours pytest.ini's `testpaths = tests`, which
+        # collects AMVM's suite and none of the package's. The package's suite had
+        # therefore never run on Linux, and when it finally did it failed three
+        # assertions that hold only on Apple Silicon. Run it explicitly.
+        working-directory: packages/minviol
+        run: python -m pytest -q --junitxml=minviol-results.xml
       - name: Publish test report
         if: always()
         uses: actions/upload-artifact@v4

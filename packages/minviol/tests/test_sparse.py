@@ -93,10 +93,13 @@ def test_candidate_scores_match_dense_elementwise(device, policy):
         sm, ss = sparse_batch.matrix.exact_scores(
             sparse_batch, ltag, lleft, right, ldelta, sparse_batch.objective, rows_s,
             options, counters)
-        # The maximum is a max, so it does not depend on accumulation order and
-        # must agree exactly. The sum of squares is accumulated differently by the
-        # two backends, so it agrees to float32 rounding only.
-        assert torch.equal(dm, sm)
+        # Close to float32 resolution, not bitwise. The two backends compute the
+        # same quantity by different routes -- a dense row block against a
+        # gather and a segment reduction -- and a compiler is free to contract
+        # those differently. On Apple Silicon they happened to agree bitwise; on
+        # x86-64 they do not, which CI caught the first time this suite ran
+        # there. Asserting equality was asserting a property of one build.
+        assert torch.allclose(dm, sm, rtol=1e-6, atol=1e-6)
         assert torch.allclose(ds, ss, rtol=1e-4, atol=1e-2)
     assert counters["untouched_max_inexact"] == 0
 
@@ -122,12 +125,19 @@ def test_swap_scores_match_dense_including_shared_constraints(device):
         sm, _ = sparse_batch.matrix.exact_scores(sparse_batch, tag, left, right, delta,
                                                  sparse_batch.objective, rows_s, options,
                                                  counters)
-        assert torch.equal(dm, sm), f"swap scores diverged at level pair {q1}"
+        assert torch.allclose(dm, sm, rtol=1e-6, atol=1e-6), \
+            f"swap scores diverged at level pair {q1}"
     assert found, "no swap candidates were generated, so nothing was tested"
 
 
 def test_trajectory_matches_dense_step_for_step(device):
-    """Under pure linf the winning score is a max, so the two must agree exactly."""
+    """The two backends must pick the same moves, step for step.
+
+    Scores agree to float32 resolution rather than bitwise, so in principle a tie
+    could break differently between them. It does not here, and that is the
+    property worth testing: what matters downstream is the move chosen, not the
+    last bit of the score it was chosen by.
+    """
     _, dense_batch, sparse_batch, options = paired(device)
     active = torch.ones(dense_batch.n_instances, dtype=torch.bool, device=device)
     for step in range(15):

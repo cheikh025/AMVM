@@ -118,7 +118,17 @@ y_new = y_old + delta[candidate] * accumulated      # matches dense exactly
 
 `d*(a - b)` and `d*a - d*b` are algebraically equal and not bitwise equal. Since
 the test suite compares *trajectories*, that difference is a different program.
-With the grouping above, sparse and dense candidate scores are bit-identical.
+With the grouping above, sparse and dense candidate scores agree to float32
+resolution and pick the same moves.
+
+They are **not** bitwise equal across platforms, and an earlier version of this
+document claimed they were. The two backends reach the same quantity by different
+routes -- a dense row block against a gather and a segment reduction -- and a
+compiler may contract those differently. On Apple Silicon they agreed bitwise; on
+x86-64 they do not. The grouping above is still worth keeping, because it removes
+the difference that is *algebraic* rather than incidental, and because the
+incremental update has to be grouped the way the candidate was scored or the
+realized objective drifts from the predicted one.
 
 ## L2 needs none of this
 
