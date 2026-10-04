@@ -1,0 +1,89 @@
+name: Release
+
+# Publishes to PyPI on a version tag, using Trusted Publishing: PyPI verifies a
+# short-lived OIDC token minted by GitHub for this specific repository, workflow
+# and environment. No API token is stored anywhere, so there is none to leak or
+# rotate. Configure it once at
+# https://pypi.org/manage/project/minviol/settings/publishing/
+#
+#   git tag -a v0.1.0 -m "..." && git push origin v0.1.0
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    # Publishing is irreversible -- a release can be yanked but never deleted --
+    # so the tests gate it rather than running beside it.
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.10", "3.12"]
+    env:
+      MINVIOL_TEST_DEVICE: cpu
+      OMP_NUM_THREADS: "1"
+      MKL_NUM_THREADS: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+      - run: |
+          python -m pip install --upgrade pip
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install -e ".[test]"
+          python -m pip check
+      - run: python -m pytest -q
+
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install --upgrade build twine
+      - run: python -m build
+      - name: Check the metadata PyPI will render
+        run: python -m twine check dist/*
+      - name: Refuse to publish a tag that disagrees with the version
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          tagged="${GITHUB_REF_NAME#v}"
+          built="$(ls dist/*.tar.gz | sed -E 's/.*minviol-(.+)\.tar\.gz/\1/')"
+          if [ "$tagged" != "$built" ]; then
+            echo "tag ${GITHUB_REF_NAME} does not match version ${built} in pyproject.toml" >&2
+            exit 1
+          fi
+          echo "tag and version agree on ${built}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: distributions
+          path: dist/
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    # A protected environment is the second half of Trusted Publishing: it is
+    # what lets you require a manual approval before anything reaches PyPI.
+    environment:
+      name: pypi
+      url: https://pypi.org/p/minviol
+    permissions:
+      id-token: write          # mint the OIDC token; nothing else is needed
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: distributions
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1

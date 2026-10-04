@@ -119,6 +119,14 @@ def prune_slack(bound):
 # loop per row.
 BATCHED_ROWS = _flag("AMVM_BATCHED_ROWS", False)
 
+# Serve the batched path from the extracted minviol package instead of
+# ALNS/batched.py. The two implement the same search over the same instances;
+# minviol states the objective as the violation of lower <= Ax <= upper, which a
+# quantization row uses in its equality form. This is a variant rather than a
+# replacement so that the two can be compared at equal time on real instances,
+# and so that tests/test_minviol_parity.py keeps both sides to compare.
+MINVIOL_ENGINE = _flag("AMVM_MINVIOL_ENGINE", False)
+
 # How many rows share one batched program. The residual block is
 # rows x samples floats, so this is the main memory knob of the batched path.
 BATCH_SIZE = _int("AMVM_BATCH_SIZE", 64)
@@ -186,6 +194,7 @@ def describe(device: torch.device = None) -> dict:
         "residual_ordered_rows": RESIDUAL_ORDERED_ROWS,
         "local_search_deadline": LOCAL_SEARCH_DEADLINE,
         "batched_rows": BATCHED_ROWS,
+        "minviol_engine": MINVIOL_ENGINE,
         "batch_size": BATCH_SIZE,
         "batch_candidate_tile": BATCH_CANDIDATE_TILE,
         "budget_row_tile": BUDGET_ROW_TILE,

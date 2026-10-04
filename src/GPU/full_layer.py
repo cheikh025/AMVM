@@ -158,6 +158,10 @@ def quantize_indices_batched(indices, inputs: torch.Tensor, weights: torch.Tenso
     """
     from ALNS import batched, tuning as alns_tuning
 
+    engine = batched
+    if alns_tuning.MINVIOL_ENGINE:
+        from ALNS import minviol_engine as engine  # noqa: F811
+
     device = inputs.device
     indices = [int(index) for index in indices]
     batch_size = max(1, alns_tuning.BATCH_SIZE)
@@ -189,7 +193,7 @@ def quantize_indices_batched(indices, inputs: torch.Tensor, weights: torch.Tenso
 
         B_k = (inputs @ originals.T).T.contiguous()
         seconds = config.seconds * len(group)  # the group gets what its rows would have had
-        solution, objective = batched.solve(
+        solution, objective = engine.solve(
             inputs, initial, levels, B_k, seconds,
             acceptance_policy=getattr(config, "acceptance_policy", "linf"),
             fixed_mask=fixed_mask, seed=getattr(config, "seed", 9101) + group[0],

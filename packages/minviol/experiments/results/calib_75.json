@@ -1,0 +1,338 @@
+{
+  "device": "mps",
+  "args": {
+    "variants": [
+      "best"
+    ],
+    "instances": [
+      "dense-ineq",
+      "equality",
+      "ill-cond",
+      "sparse-ineq",
+      "tomography",
+      "two-sided"
+    ],
+    "seconds": 3.0,
+    "iterations": 75,
+    "trials": 3,
+    "device": null,
+    "output": "experiments/results/calib_75.json"
+  },
+  "records": [
+    {
+      "instance": "dense-ineq",
+      "variant": "best",
+      "trial": 0,
+      "violation": 27.17216682434082,
+      "feasible": false,
+      "iterations": 75,
+      "wall": 3.0282609462738037,
+      "counters": {
+        "screened": 94848,
+        "survivors": 3356,
+        "constraint_candidate_products": 67120000,
+        "moves_applied": 171,
+        "passes": 247,
+        "iterations": 75
+      }
+    },
+    {
+      "instance": "dense-ineq",
+      "variant": "best",
+      "trial": 1,
+      "violation": 34.30821228027344,
+      "feasible": false,
+      "iterations": 75,
+      "wall": 2.608813762664795,
+      "counters": {
+        "screened": 82560,
+        "survivors": 2351,
+        "constraint_candidate_products": 47020000,
+        "moves_applied": 139,
+        "passes": 215,
+        "iterations": 75
+      }
+    },
+    {
+      "instance": "dense-ineq",
+      "variant": "best",
+      "trial": 2,
+      "violation": 21.53609275817871,
+      "feasible": false,
+      "iterations": 75,
+      "wall": 3.301274061203003,
+      "counters": {
+        "screened": 102528,
+        "survivors": 3158,
+        "constraint_candidate_products": 63160000,
+        "moves_applied": 191,
+        "passes": 267,
+        "iterations": 75
+      }
+    },
+    {
+      "instance": "equality",
+      "variant": "best",
+      "trial": 0,
+      "violation": 21.034576416015625,
+      "feasible": false,
+      "iterations": 75,
+      "wall": 3.2345149517059326,
+      "counters": {
+        "screened": 113280,
+        "survivors": 3751,
+        "constraint_candidate_products": 74927584,
+        "moves_applied": 219,
+        "passes": 295,
+        "iterations": 75
+      }
+    },
+    {
+      "instance": "equality",
+      "variant": "best",
+      "trial": 1,
+      "violation": 21.032318115234375,
+      "feasible": false,
+      "iterations": 75,
+      "wall": 3.023500919342041,
+      "counters": {
+        "screened": 97152,
+        "survivors": 3344,
+        "constraint_candidate_products": 66861504,
+        "moves_applied": 177,
+        "passes": 253,
+        "iterations": 75
+      }
+    },
+    {
+      "instance": "equality",
+      "variant": "best",
+      "trial": 2,
+      "violation": 27.89287567138672,
+      "feasible": false,
+      "iterations": 75,
+      "wall": 3.205436944961548,
+      "counters": {
+        "screened": 91392,
+        "survivors": 2993,
+        "constraint_candidate_products": 59823008,
+        "moves_applied": 162,
+        "passes": 238,
+        "iterations": 75
+      }
+    },
+    {
+      "instance": "ill-cond",
+      "variant": "best",
+      "trial": 0,
+      "violation": 3.592435836791992,
+      "feasible": false,
+      "iterations": 75,
+      "wall": 1.4626810550689697,
+      "counters": {
+        "screened": 45696,
+        "survivors": 2845,
+        "constraint_candidate_products": 51771168,
+        "moves_applied": 43,
+        "passes": 119,
+        "iterations": 75
+      }
+    },
+    {
+      "instance": "ill-cond",
+      "variant": "best",
+      "trial": 1,
+      "violation": 3.2071266174316406,
+      "feasible": false,
+      "iterations": 75,
+      "wall": 2.042578935623169,
+      "counters": {
+        "screened": 51840,
+        "survivors": 3476,
+        "constraint_candidate_products": 63867360,
+        "moves_applied": 59,
+        "passes": 135,
+        "iterations": 75
+      }
+    },
+    {
+      "instance": "ill-cond",
+      "variant": "best",
+      "trial": 2,
+      "violation": 3.23722505569458,
+      "feasible": false,
+      "iterations": 75,
+      "wall": 2.087520122528076,
+      "counters": {
+        "screened": 51456,
+        "survivors": 3253,
+        "constraint_candidate_products": 58989440,
+        "moves_applied": 58,
+        "passes": 134,
+        "iterations": 75
+      }
+    },
+    {
+      "instance": "sparse-ineq",
+      "variant": "best",
+      "trial": 0,
+      "violation": 0.0,
+      "feasible": true,
+      "iterations": 0,
+      "wall": 2.566122055053711,
+      "counters": {
+        "screened": 164352,
+        "survivors": 164352,
+        "sparse_chunks": 214,
+        "untouched_max_inexact": 0,
+        "constraint_candidate_products": 82236990,
+        "moves_applied": 213,
+        "passes": 214
+      }
+    },
+    {
+      "instance": "sparse-ineq",
+      "variant": "best",
+      "trial": 1,
+      "violation": 0.0,
+      "feasible": true,
+      "iterations": 0,
+      "wall": 2.444993019104004,
+      "counters": {
+        "screened": 157440,
+        "survivors": 157440,
+        "sparse_chunks": 205,
+        "untouched_max_inexact": 0,
+        "constraint_candidate_products": 78526890,
+        "moves_applied": 204,
+        "passes": 205
+      }
+    },
+    {
+      "instance": "sparse-ineq",
+      "variant": "best",
+      "trial": 2,
+      "violation": 0.0,
+      "feasible": true,
+      "iterations": 0,
+      "wall": 2.4733781814575195,
+      "counters": {
+        "screened": 158976,
+        "survivors": 158976,
+        "sparse_chunks": 207,
+        "untouched_max_inexact": 0,
+        "constraint_candidate_products": 79304184,
+        "moves_applied": 206,
+        "passes": 207
+      }
+    },
+    {
+      "instance": "tomography",
+      "variant": "best",
+      "trial": 0,
+      "violation": 3.0,
+      "feasible": false,
+      "iterations": 75,
+      "wall": 5.30788516998291,
+      "counters": {
+        "screened": 1461888,
+        "survivors": 1461888,
+        "sparse_chunks": 846,
+        "untouched_max_inexact": 0,
+        "constraint_candidate_products": 20466432,
+        "moves_applied": 770,
+        "passes": 846,
+        "iterations": 75
+      }
+    },
+    {
+      "instance": "tomography",
+      "variant": "best",
+      "trial": 1,
+      "violation": 3.0,
+      "feasible": false,
+      "iterations": 75,
+      "wall": 4.406347990036011,
+      "counters": {
+        "screened": 1200960,
+        "survivors": 1200960,
+        "sparse_chunks": 695,
+        "untouched_max_inexact": 0,
+        "constraint_candidate_products": 16813440,
+        "moves_applied": 619,
+        "passes": 695,
+        "iterations": 75
+      }
+    },
+    {
+      "instance": "tomography",
+      "variant": "best",
+      "trial": 2,
+      "violation": 2.0,
+      "feasible": false,
+      "iterations": 75,
+      "wall": 4.967429876327515,
+      "counters": {
+        "screened": 1359936,
+        "survivors": 1359936,
+        "sparse_chunks": 787,
+        "untouched_max_inexact": 0,
+        "constraint_candidate_products": 19039104,
+        "moves_applied": 711,
+        "passes": 787,
+        "iterations": 75
+      }
+    },
+    {
+      "instance": "two-sided",
+      "variant": "best",
+      "trial": 0,
+      "violation": 20.534576416015625,
+      "feasible": false,
+      "iterations": 75,
+      "wall": 3.562152862548828,
+      "counters": {
+        "screened": 113280,
+        "survivors": 3751,
+        "constraint_candidate_products": 74927584,
+        "moves_applied": 219,
+        "passes": 295,
+        "iterations": 75
+      }
+    },
+    {
+      "instance": "two-sided",
+      "variant": "best",
+      "trial": 1,
+      "violation": 20.532318115234375,
+      "feasible": false,
+      "iterations": 75,
+      "wall": 2.9482839107513428,
+      "counters": {
+        "screened": 97152,
+        "survivors": 3344,
+        "constraint_candidate_products": 66861504,
+        "moves_applied": 177,
+        "passes": 253,
+        "iterations": 75
+      }
+    },
+    {
+      "instance": "two-sided",
+      "variant": "best",
+      "trial": 2,
+      "violation": 27.39287567138672,
+      "feasible": false,
+      "iterations": 75,
+      "wall": 2.753476858139038,
+      "counters": {
+        "screened": 91392,
+        "survivors": 2993,
+        "constraint_candidate_products": 59823008,
+        "moves_applied": 162,
+        "passes": 238,
+        "iterations": 75
+      }
+    }
+  ]
+}

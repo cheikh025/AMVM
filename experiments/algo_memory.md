@@ -91,6 +91,8 @@ remains for the one case flags cannot express, comparing different commits.
 
 | # | Date | Title | Layer | Decision | Correctness | Memory | Runtime |
 |---|---|---|---|---|---|---|---|
+| 17 | 2026-09-18 | Single-variable descent in the batched engine | Search | KEEP; default in minviol, reached from AMVM only via MINVIOL_ENGINE | exact; swaps-only reproduces the old trajectory | neutral | 22/24 paired rows better at equal time, median -3.9% |
+| 16 | 2026-09-18 | Extract the batched engine as minviol | Infrastructure | KEEP, behind a flag | identical trajectory for 25 rounds on all three policies | neutral | parity; sparse scoring 35x at 0.2% density but slower per whole pass |
 | 15 | 2026-09-18 | Sample-count gate on the pruned stage | Infrastructure | KEEP, on by default | same path below the gate | neutral | restores tomography and FIR to parity |
 | 14 | 2026-09-18 | Cross-application check, and a measurement fault | Method | CORRECTION | exact throughout | neutral | in-process variants warm each other's kernels |
 | 13 | 2026-09-18 | Split the budget across replicas | Search | REVERT | feasible | neutral | worse or neutral; +24% on fc2 at R=5 |
@@ -106,6 +108,153 @@ remains for the one case flags cannot express, comparing different commits.
 | 3 | 2026-09-16 | Host-side index gathering and settled-pass skip | Infrastructure/Search | KEEP | exact; skip is statistically equivalent | neutral | 1.17x-1.46x over baseline |
 | 2 | 2026-09-15 | Bounded exhaustive swap evaluation | Infrastructure | KEEP | exact match | 4x smaller filter tensor in measured default case | 2.54x slower on CPU microbenchmark |
 | 1 | 2026-09-15 | Explicit domains and physical move updates | Evaluator/Search | KEEP | 27/27 tests pass | neutral | full benchmark unavailable |
+
+---
+
+## Experiment 17: Single-variable descent in the batched engine
+
+**Date:** 2026-09-18 · **Idea layer:** Search · **Decision:** KEEP, on by default
+
+### Idea card
+
+The batched engine descends by swaps only. A swap exchanges the levels of two
+variables, so it preserves the multiset of assigned levels: it can reorder a
+point but cannot change how many variables sit at each level. Add a batched
+single-variable pass -- set one variable to one level -- built like the swap pass
+(candidate list, screen, exact scores with pruning, one winner per instance).
+
+### Implementation surface
+
+- Files changed: `packages/minviol/src/minviol/engine.py` (`candidate_moves`, `move_pass`)
+- Feature controls: `Options.single_variable_moves`, `AMVM_MINVIOL_SINGLE_VARIABLE`
+- Every level is scored in one candidate list, not one level per kernel. Holding
+  the rest of the point fixed, a constraint's violation is a max of affine
+  functions of the chosen value, so the score is convex along a sorted domain; a
+  truncated window would be a real restriction, and looping over levels would
+  take the first improving one instead of the best.
+
+### Results
+
+Synthetic quantization instances, 8 rows, 768 variables, 4,096 samples, 3 bits,
+4s budget, 3 seeds, engines alternated within each repetition. MPS.
+
+| Variant | median objective | paired rows better | worse |
+|---|---:|---:|---:|
+| `batched.py` | 125.98 | -- | -- |
+| minviol, swaps only | 126.02 | 16/24 | 8/24 |
+| minviol, with moves | **121.06** | 22/24 | 2/24 |
+
+Isolated at the descent, on a binary domain from an all-zeros start: a swap-only
+descent leaves the objective at 28.46 unchanged, having set zero variables. With
+the move pass it reaches 16.96.
+
+### Analysis
+
+The swaps-only row is the control, and it lands on the old engine's number, which
+is what says the -3.9% belongs to the move pass rather than to the port. Two of
+24 rows got worse, so this does not meet the strictest reading of the repository's
+decision metric ("no pair allowed to get worse"); it is kept because the median
+gain is large, the mechanism is understood, and the flag makes it reversible.
+
+The cold-start measurement is the sharper statement: without single-variable
+moves the descent cannot take a single step from a point where every variable
+shares a level. Over a whole solve the random perturbation supplies histogram
+changes one variable at a time, so a swap-only search does eventually crawl away
+-- which is why the end-to-end gap is 3.9% and not total.
+
+### Lessons
+
+- A neighbourhood that preserves an invariant of the point cannot fix that
+  invariant. Check what a move class conserves before trusting it alone.
+- Convexity along a sorted domain makes full level enumeration the cheap option,
+  not the expensive one.
+
+### Artefacts
+
+- `experiments/results/minviol/equal_time.json`, `..._swaps_only.json`
+- `experiments/minviol_equal_time.py`
+- `packages/minviol/tests/test_moves.py`
+
+---
+
+## Experiment 16: Extract the batched engine as minviol
+
+**Date:** 2026-09-18 · **Idea layer:** Infrastructure · **Decision:** KEEP, behind a flag
+
+### Idea card
+
+`ALNS/batched.py` minimizes `max|Ax - b|` over a discrete domain. That objective
+is not specific to quantization -- this repository already runs it on discrete
+tomography and filter design. Lift it into a standalone package whose objective
+is the violation of `lower <= Ax <= upper`, so an objective of zero is a feasible
+point, and add a sparse backend.
+
+### Implementation surface
+
+- New: `packages/minviol/` (engine, dense and sparse backends, 56 tests)
+- Files changed: `src/GPU/ALNS/tuning.py` (`MINVIOL_ENGINE`), `src/GPU/full_layer.py`
+- New: `src/GPU/ALNS/minviol_engine.py` (adapter), `tests/test_minviol_parity.py`
+- `batched.py` is deliberately kept as the reference rather than replaced by the
+  shim: the parity test is only worth anything while both sides of it exist.
+
+### Results
+
+| Check | Result |
+|---|---|
+| Trajectory vs `batched.py` | identical point and objective for 25 perturb-and-descend rounds, all three acceptance policies, with fixed variables and per-instance domains |
+| Sparse vs dense candidate scores | bit-identical on both move types |
+| Sparse *scoring* speedup, 100k constraints, MPS | 35.3x at 0.2% density, 11.5x at 1%, 1.4x at 10%, 0.77x at 20% |
+| Sparse *whole-pass* speedup | 4.3x on the single-variable pass, 0.10x-0.65x on the swap pass, 0.31x-0.89x over three full passes |
+| Equal-time quality, swaps only | parity (see entry 17) |
+
+**The scoring number does not survive a pass.** A pass also screens, refreshes
+caches, recomputes the top-K set and applies a move, all proportional to the
+constraint count whatever the backend holds. Profiling says the sparse swap pass
+is bound by kernel launches, not arithmetic: 4,130 candidates over 826k entries
+take 8.6 ms, and a bare column gather already costs 1.2 ms. Removing the
+`torch.unique` merge in favour of two binary searches made it slightly *worse*,
+which is what says the sort was not the cost.
+
+That measurement produced the more useful finding: on a general constraint system
+from a cold start, swaps are the *worse* move, not merely the slow one. At equal
+time, single-variable moves alone reach a feasible point where moves-plus-swaps
+stalls at 5.7 and swaps alone at 9.5. `Options.swap_moves` turns them off.
+
+It also exposed a real defect. `feasibility_tol` defaulted to 1e-9, which float32
+cannot reach: `A x` over m terms accumulates about `sqrt(m)*eps` of relative
+error, so the sparse backend landed at 9.5e-07 on a system dense solved to exactly
+0.0 and neither was reported feasible. The default is now derived from the dtype,
+the bound scale and the constraint count.
+
+### Analysis
+
+Inequalities are handled by clamping, not by slack variables: for `a.x <= u` the
+optimal slack is `max(0, u - a.x)`, so substituting it back gives the clamp
+exactly. Searching the slack instead would have put one extra variable per
+constraint into the candidate dimension, which is the expensive one.
+
+Two things had to match the original's floating-point grouping rather than merely
+its algebra, or the trajectory diverged: a swap is applied with the same
+expression it was scored with, and the sparse backend multiplies the assembled
+column difference rather than each half separately.
+
+`torch.sparse_csr`/`_csc` are not implemented on MPS, so the sparse structure is
+carried as ordinary index tensors. A backend built on the compressed types would
+have been CUDA and CPU only.
+
+### Lessons
+
+- An algebraically equal regrouping is a different program when the comparison is
+  a trajectory. Score and apply with one expression.
+- A duplicated sparse entry is invisible to a from-scratch `A @ x` and applied
+  twice by an incremental update; refuse it at construction.
+- The sparse win is qualitative, not proportional: a candidate can only improve if
+  its column touches a currently-worst constraint, which is row-major information.
+
+### Artefacts
+
+- `packages/minviol/`, `packages/minviol/benchmarks/density_crossover_mps.json`
+- `tests/test_minviol_parity.py`
 
 ---
 

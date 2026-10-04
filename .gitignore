@@ -38,3 +38,15 @@ experiments/data/
 # Benchmark results are the evidence for the ledger in experiments/algo_memory.md,
 # so they are tracked despite the blanket *.json rule above.
 !experiments/results/**/*.json
+
+# Same reason: the density table in the minviol README cites these numbers, and a
+# cited measurement that is not in the repository cannot be checked.
+!packages/minviol/benchmarks/**/*.json
+
+# And the keep/reject ledger in packages/minviol/experiments/algo_memory.md names
+# one of these per experiment as its artefact. A ledger entry whose evidence is
+# not in the repository is an assertion, not a record.
+!packages/minviol/experiments/results/**/*.json
+
+# Editable-install metadata for packages/minviol
+packages/minviol/src/*.egg-info/
